@@ -1,0 +1,5 @@
+# Keep Windows line endings exactly as written - PowerShell and cmd expect CRLF
+*.ps1 -text
+*.cmd -text
+*.bat -text
+*.txt -text

@@ -1,1 +1,175 @@
-my settings for windows 11..
+<div align="center">
+
+# 🎮 GamingTweaks
+
+**One menu. Every change backed up. One key to undo it all.**
+
+A Windows 10/11 gaming optimisation script that adapts to your PC, keeps the Microsoft Store,
+Xbox and anti-cheat working, and can put everything back exactly as it was.
+
+`v1.0.0` · PowerShell · Windows 10 / 11
+
+</div>
+
+---
+
+## ⚡ Quick start
+
+1. Click the green **Code** button above, then **Download ZIP**, and extract it
+2. Double-click **`Run-GamingTweaks.cmd`** and accept the admin prompt
+3. Press **`1`** to apply everything recommended
+4. Reboot, then press **`I`** to check everything applied
+
+Changed your mind? Run it again and press **`R`**.
+
+> Backup and logs are kept in `C:\GamingTweaks`.
+
+---
+
+## 🛡️ The safety net
+
+- A **System Restore point** is made first
+- **Every** registry value, service, scheduled task, power plan, network adapter setting, DNS server
+  and NVIDIA profile is saved to `C:\GamingTweaks\backup.json` **before** it is changed
+- **`R`** restores all of it
+- Every run is logged to `C:\GamingTweaks\log-<date>.txt`
+
+*Not covered by `R`: removed bloat apps (reinstall them from the Store) and deleted junk files.*
+
+---
+
+## 🧠 It adapts to your PC
+
+| Detected | What changes |
+|---|---|
+| **Laptop** | Battery settings untouched, hibernate left on |
+| **Desktop** | Full performance power settings |
+| **AMD 7900X3D / 7950X3D / 9900X3D / 9950X3D** | Balanced-based plan, core parking + Game Bar kept so games stay on the V-Cache chiplet |
+| **NVIDIA GPU** | Telemetry off + driver profile import offered |
+| **16 GB+ RAM** | Memory compression off |
+| **Realtek audio** | Audio power saving off |
+| **Windows 11** | Global timer resolution enabled |
+
+---
+
+## 📋 The menu
+
+| Key | Section | What it does |
+|:-:|---|---|
+| **1** | **Apply everything recommended** | Restore point → 2-9, S, G, N → asks about bloat apps and the optional trade-offs |
+| **2** | Power plan | Own Ultimate-based plan, aggressive turbo boost, max-performance EPP, all cores unparked, no PCIe/USB/disk power saving |
+| **3** | Gaming & input | Game Mode, no Game DVR, foreground CPU boost, MMCSS games profile, raw mouse input, no Sticky Keys pop-ups, no startup delay, Realtek audio fix |
+| **4** | GPU | Hardware-accelerated GPU scheduling, windowed-game optimisations, MSI mode, NVIDIA telemetry off |
+| **5** | Background & privacy | Telemetry + ~20 telemetry tasks, ads, Bing search, Copilot, Recall, Widgets, background apps, settings sync and tracking off; optional Edge ad blocking |
+| **6** | Windows Update off | Paused 10 years, driver updates blocked, version locked — **the Store keeps working** |
+| **7** | Network | Throttling and Nagle off, adapter power saving / EEE / coalescing off, NIC MSI mode, DSCP 46 game traffic priority, optional lowest-ping mode |
+| **8** | Timer resolution | 0.5 ms or 1.0 ms at every boot |
+| **9** | Cleanup | Temp, update + Delivery Optimization caches, crash dumps, Discord cache; asks about shader caches, Recycle Bin and WinSxS; shows space freed |
+| **S** | Services | ~40 unused services off; asks about printing, Bluetooth, file sharing and search indexing |
+| **G** | Game priority | Above Normal CPU priority for Apex and 9 other games, MMCSS IO latency cap off |
+| **N** | NVIDIA profile | Downloads NVIDIA Profile Inspector, backs up your profile, imports 12 tuned settings |
+
+### Extras — never applied without asking
+
+| Key | Option | Notes |
+|:-:|---|---|
+| **A** | Remove bloat apps | Keeps Store, Xbox, Gaming Services, Photos, Calculator, Notepad, Paint, Terminal, Snipping Tool, Camera |
+| **B** | DNS servers | Cloudflare, Google, Quad9 or automatic |
+| **C** | Core Isolation off | VBS / Memory Integrity off — often +5-10% FPS in CPU-heavy games |
+| **D** | UAC prompts off | "Never notify" — Store apps keep working |
+| **E** | Defender off | Needs Tamper Protection off first; the script opens the right page |
+| **F** | Spectre / Meltdown off | Older CPUs only |
+| **M** | MPO off | Only if you get flicker or stutter in borderless games |
+| **T** | Timer test | Measures how accurately Windows wakes up |
+| **P** | Restore point | Make one any time |
+| **I** | PC info | Hardware, anti-cheat, VBS, power plan, HAGS and startup apps |
+| **R** | **Revert everything** | Puts every recorded setting back |
+
+<details>
+<summary><b>🟢 NVIDIA profile settings (option N)</b></summary>
+
+| Setting | Value |
+|---|---|
+| Power management mode | Prefer maximum performance |
+| Low Latency Mode | On |
+| Texture filtering quality | High performance |
+| Negative LOD bias | Clamp |
+| Shader cache size | Unlimited |
+| CUDA force P2 state | Off |
+| Threaded optimisation | On |
+| Ansel | Off |
+| V-Sync | On for G-Sync users, otherwise Off |
+
+**Not touched:** ray tracing, anisotropic filtering, anti-aliasing, Resizable BAR, G-Sync itself.
+Profile Inspector is downloaded from its [official GitHub](https://github.com/Orbmu2k/nvidiaProfileInspector).
+
+</details>
+
+<details>
+<summary><b>🔧 Services kept on purpose (option S)</b></summary>
+
+Windows Update and the Microsoft Store, Xbox Live / Game Save / controllers, audio, networking,
+UPnP (keeps your NAT type open), SysMain and Microsoft account sign-in.
+
+</details>
+
+---
+
+## 🚫 Left out on purpose
+
+These appear in other tweak tools. They break things, risk your data or hardware, or don't help:
+
+| Tweak | Why not |
+|---|---|
+| UAC fully off | Breaks Store apps |
+| Removing Edge / WebView | Breaks apps and game launchers |
+| Disabling the Windows Update service | Breaks Store downloads |
+| Page file off | Apex crashes with "out of memory" |
+| Write-cache flushing off | File corruption on power loss |
+| DEP / CFG / firewall off | No FPS gain |
+| HPET / dynamic tick / platform tick | Mixed results, can worsen frame pacing |
+| Real-time driver thread priorities | More likely to cause stutter |
+| BBR2, Large System Cache, network resets | Buggy or server-only |
+| GPU thermal throttling / power gating off | Hardware risk |
+| Renaming / deleting Windows system files | Breaks Windows |
+| Deleting every `.log` / `.bak` / `.tmp` on the drive | Deletes app and game files |
+| Wiping browser data, logins or restore points | Data loss |
+
+---
+
+## 🏆 Do these by hand — the biggest real gains
+
+- **BIOS:** XMP / EXPO on · Resizable BAR on · Ryzen: PBO with a negative Curve Optimizer
+- **Drivers:** clean install with NVCleanstall
+- **In game:** NVIDIA Reflex on · cap FPS a few frames under your refresh rate
+- **G-Sync:** G-Sync on, V-Sync on in the control panel, V-Sync off in game
+- **Windows:** highest refresh rate in *Settings → Display → Advanced display* · trim *Task Manager → Startup apps*
+
+---
+
+## ❓ Good to know
+
+- **Windows Security may flag the script** because it contains the optional "Defender off" code. That part only runs if you choose it.
+- **FACEIT / Vanguard game won't start after `C`?** Press `R`, or turn Memory Integrity back on in Windows Security.
+- **Reverting NVIDIA profiles after a driver update?** Use Profile Inspector → *Restore defaults* instead.
+- **Want proof it helped?** Record a short session in [CapFrameX](https://www.capframex.com/) before and after, and compare the 1% lows.
+
+---
+
+## 📁 Files
+
+| File | |
+|---|---|
+| `Run-GamingTweaks.cmd` | Double-click this to start |
+| `GamingTweaks.ps1` | The script itself |
+| `README.txt` | Offline copy of this guide |
+| `legacy/Windows11.bat` | The original 2024 script, kept for reference — **not recommended**, see [CHANGELOG](CHANGELOG.md) |
+
+<div align="center">
+
+*Built from the best parts of WinUtil, Atlas, ReviOS, FR33THY's Ultimate, UnLovedCookie's Network,
+GTweak, privacy.sexy, Sparkle and shoober420's scripts — reviewed line by line, risky parts removed.*
+
+**Use at your own risk. Make a backup before tweaking any PC.**
+
+</div>
