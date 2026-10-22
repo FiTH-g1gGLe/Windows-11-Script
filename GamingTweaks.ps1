@@ -14,17 +14,21 @@
 
     Source: https://github.com/FiTH-g1gGLe/Windows-11-Script
 
-    Run:  double-click Run-GamingTweaks.cmd
-     or:  powershell -ExecutionPolicy Bypass -File .\GamingTweaks.ps1
+    Run:  double-click Run-GamingTweaks.cmd          (window / GUI)
+          double-click Run-GamingTweaks-Console.cmd  (text menu)
+     or:  powershell -ExecutionPolicy Bypass -File .\GamingTweaks.ps1 [-Console]
 #>
+param([switch]$Console)
 
 #region ---------- bootstrap ----------
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    Start-Process powershell.exe -Verb RunAs -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`""
+    $style = if ($Console) { '' } else { '-WindowStyle Minimized ' }
+    $extra = if ($Console) { ' -Console' } else { '' }
+    Start-Process powershell.exe -Verb RunAs -ArgumentList "-NoProfile -ExecutionPolicy Bypass $style-File `"$PSCommandPath`"$extra"
     exit
 }
 
-$Version = '1.1.0'
+$Version = '1.2.0'
 $ErrorActionPreference = 'Continue'
 $ProgressPreference    = 'SilentlyContinue'
 $Host.UI.RawUI.WindowTitle = "GamingTweaks v$Version"
@@ -40,7 +44,19 @@ function Write-Title($t) { Write-Host ""; Write-Host "=== $t ===" -ForegroundCol
 function Write-Ok($t)    { Write-Host "  [+] $t" -ForegroundColor Green }
 function Write-Skip($t)  { Write-Host "  [-] $t" -ForegroundColor DarkGray }
 function Write-Warn2($t) { Write-Host "  [!] $t" -ForegroundColor Yellow }
-function Confirm-Yes($q) {
+$script:GuiMode = $false
+$script:Answers = @{}
+# In the window (GUI) the answers come from the tick boxes; in the text menu we ask.
+function Get-Choice([string]$Prompt, [string]$Key) {
+    if ($script:GuiMode) { return "$($script:Answers[$Key])" }
+    return "$(Read-Host $Prompt)".Trim()
+}
+function Confirm-Yes([string]$q, [string]$Key = '') {
+    if ($script:GuiMode -and $Key) {
+        $ans = [bool]$script:Answers[$Key]
+        Write-Host "  $q -> $(if ($ans) { 'yes' } else { 'no' })" -ForegroundColor DarkGray
+        return $ans
+    }
     $a = Read-Host "  $q [y/N]"
     return ($a -match '^(y|yes)$')
 }
@@ -452,7 +468,7 @@ function Invoke-Background {
     Set-Reg 'HKLM\SOFTWARE\Policies\Microsoft\Windows\Explorer' 'NoUseStoreOpenWith' 1
     Write-Ok 'Settings sync, online speech, typing/ink collection, feedback prompts, feature experiments off'
 
-    if (Confirm-Yes 'Apply Edge ad/telemetry blocking policies? (Edge will then say "managed by your organisation")') {
+    if (Confirm-Yes 'Apply Edge ad/telemetry blocking policies? (Edge will then say "managed by your organisation")' 'Edge') {
         $e = 'HKLM\SOFTWARE\Policies\Microsoft\Edge'
         foreach ($v in 'EdgeShoppingAssistantEnabled', 'PersonalizationReportingEnabled', 'DiagnosticData', 'HubsSidebarEnabled',
                        'ShowRecommendationsEnabled', 'SpotlightExperiencesAndRecommendationsEnabled', 'ShowMicrosoftRewards',
@@ -522,7 +538,7 @@ function Invoke-Network {
     # (+ packet / DMA coalescing off, from UnLovedCookie's Network script "latency" mode)
     $kw = '*EEE', 'AdvancedEEE', 'EEELinkAdvertisement', 'EnableGreenEthernet', 'GigaLite', 'PowerSavingMode', 'ULPMode',
           'EnableSavePowerNow', 'ReduceSpeedOnPowerDown', '*PacketCoalescing', 'DMACoalescing'
-    $lowPing = Confirm-Yes 'Lowest-ping mode? Turns off NIC interrupt moderation (slightly more CPU use, lower latency)'
+    $lowPing = Confirm-Yes 'Lowest-ping mode? Turns off NIC interrupt moderation (slightly more CPU use, lower latency)' 'LowPing'
     if ($lowPing) { $kw += '*InterruptModeration' }
     $pmDone = @()
     foreach ($a in (Get-NetAdapter -Physical -ErrorAction SilentlyContinue)) {
@@ -572,7 +588,7 @@ function Invoke-Dns {
     Write-Host '  2. Google      8.8.8.8 / 8.8.4.4'
     Write-Host '  3. Quad9       9.9.9.9 / 149.112.112.112 (blocks malware domains)'
     Write-Host '  4. Back to automatic (router / ISP)'
-    $c = Read-Host '  Choose'
+    $c = Get-Choice '  Choose' 'Dns'
     $servers = switch ($c) { '1' { '1.1.1.1', '1.0.0.1' } '2' { '8.8.8.8', '8.8.4.4' } '3' { '9.9.9.9', '149.112.112.112' } '4' { 'reset' } default { $null } }
     if (-not $servers) { return }
     foreach ($a in (Get-NetAdapter -Physical -ErrorAction SilentlyContinue | Where-Object Status -eq 'Up')) {
@@ -613,7 +629,7 @@ public static class TimerRes {
         if (-not (Test-Path $TimerExe)) { Add-Type -TypeDefinition $code -OutputAssembly $TimerExe -OutputType WindowsApplication -ErrorAction Stop }
         Write-Host '  1. 0.5 ms  (most common)'
         Write-Host '  2. 1.0 ms  (on some PCs gives steadier frame times - use [T] to compare)'
-        $res = if ("$(Read-Host '  Choose [1]')".Trim() -eq '2') { 10000 } else { 5000 }
+        $res = if ((Get-Choice '  Choose [1]' 'TimerRes') -eq '2') { 10000 } else { 5000 }
         Unregister-ScheduledTask -TaskName $TimerTask -Confirm:$false -ErrorAction SilentlyContinue
         $action    = New-ScheduledTaskAction -Execute $TimerExe -Argument "$res"
         $trigger   = New-ScheduledTaskTrigger -AtStartup
@@ -676,7 +692,7 @@ function Invoke-Cleanup {
     }
 
     # Shader caches: only worth clearing after a GPU driver update (games re-compile = brief stutter)
-    if (Confirm-Yes 'Clear GPU shader caches? Only do this right after a graphics driver update') {
+    if (Confirm-Yes 'Clear GPU shader caches? Only do this right after a graphics driver update' 'Shader') {
         foreach ($d in "$env:LOCALAPPDATA\Microsoft\DirectX Shader Cache",
                        "$env:LOCALAPPDATA\NVIDIA\DXCache", "$env:LOCALAPPDATA\NVIDIA\GLCache",
                        "$env:USERPROFILE\AppData\LocalLow\NVIDIA\PerDriverVersion\DXCache",
@@ -685,13 +701,13 @@ function Invoke-Cleanup {
         Write-Ok 'Shader caches cleared - first game launch / first match may stutter while they rebuild'
     } else { Write-Skip 'Shader caches kept' }
 
-    if (Confirm-Yes 'Empty the Recycle Bin?') {
+    if (Confirm-Yes 'Empty the Recycle Bin?' 'Recycle') {
         try { Clear-RecycleBin -Force -ErrorAction Stop } catch {}
         Write-Ok 'Recycle Bin emptied'
     }
 
     # Component store: removes superseded Windows files (safe; the slow one - a few minutes)
-    if (Confirm-Yes 'Clean up the Windows component store (WinSxS)? Safe, frees GBs, takes a few minutes') {
+    if (Confirm-Yes 'Clean up the Windows component store (WinSxS)? Safe, frees GBs, takes a few minutes' 'WinSxS') {
         Write-Host '  Running DISM /StartComponentCleanup ...'
         Start-Process -FilePath dism.exe -ArgumentList '/Online', '/Cleanup-Image', '/StartComponentCleanup' -Wait -NoNewWindow
         Write-Ok 'Component store cleaned'
@@ -721,7 +737,7 @@ function Invoke-Bloat {
     Write-Host '           Teams, Phone Link, Family.'
     Write-Host '  Keeps:   Store, Xbox, Gaming Services, Photos, Calculator, Notepad, Paint, Terminal, Snipping Tool, Camera.'
     Write-Warn2 'Not covered by Revert - reinstall any of these from the Microsoft Store if you miss them.'
-    if (-not (Confirm-Yes 'Remove them?')) { return }
+    if (-not (Confirm-Yes 'Remove them?' 'Bloat')) { return }
     $prov = Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue
     foreach ($n in $BloatApps) {
         $pk = Get-AppxPackage -AllUsers -Name $n -ErrorAction SilentlyContinue
@@ -790,7 +806,7 @@ function Invoke-Spectre {
     Write-Title 'Spectre / Meltdown mitigations off'
     Write-Host "  CPU: $CpuName"
     Write-Host '  Helps older CPUs (Intel up to ~10th gen, Ryzen 1000/2000). On newer CPUs it can be SLOWER.'
-    if (-not (Confirm-Yes 'Apply?')) { return }
+    if (-not (Confirm-Yes 'Apply?' 'Spectre')) { return }
     $mm = 'HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management'
     Set-Reg $mm 'FeatureSettingsOverride' 3
     Set-Reg $mm 'FeatureSettingsOverrideMask' 3
@@ -841,19 +857,19 @@ function Invoke-Services {
         })
     }
 
-    if (-not (Confirm-Yes 'Do you use a printer (or "Microsoft Print to PDF")?')) {
+    if (-not (Confirm-Yes 'Do you use a printer (or "Microsoft Print to PDF")?' 'Printer')) {
         Off ([ordered]@{ Spooler = 'Print Spooler'; PrintNotify = 'Printer Extensions' })
     } else { Write-Skip 'Printing kept' }
 
-    if (-not (Confirm-Yes 'Do you use Bluetooth (headphones, controller, mouse, phone)?')) {
+    if (-not (Confirm-Yes 'Do you use Bluetooth (headphones, controller, mouse, phone)?' 'Bluetooth')) {
         Off ([ordered]@{ bthserv = 'Bluetooth Support'; BTAGService = 'Bluetooth Audio Gateway'; BthAvctpSvc = 'Bluetooth AVCTP' })
     } else { Write-Skip 'Bluetooth kept' }
 
-    if (-not (Confirm-Yes 'Do you share folders with other PCs or use a NAS / network drive?')) {
+    if (-not (Confirm-Yes 'Do you share folders with other PCs or use a NAS / network drive?' 'Sharing')) {
         Off ([ordered]@{ LanmanServer = 'File and printer sharing (Server)'; lmhosts = 'NetBIOS helper'; FDResPub = 'Network discovery publishing' })
     } else { Write-Skip 'File sharing kept' }
 
-    if (Confirm-Yes 'Turn off Windows Search indexing? (Start still finds apps + settings; searching files gets slower)') {
+    if (Confirm-Yes 'Turn off Windows Search indexing? (Start still finds apps + settings; searching files gets slower)' 'SearchOff') {
         Off ([ordered]@{ WSearch = 'Windows Search indexing' })
     } else { Write-Skip 'Search indexing kept' }
 
@@ -861,7 +877,7 @@ function Invoke-Services {
     Write-Host '  AGGRESSIVE MODE: more always-running services set to start only when needed, plus more turned off.' -ForegroundColor Cyan
     Write-Host '  Still kept: Store downloads (BITS, Delivery Optimization), Xbox networking (IP Helper), sign-in,'
     Write-Host '  notifications, typing / search box, audio, display, networking.'
-    if (Confirm-Yes 'Use aggressive mode?') {
+    if (Confirm-Yes 'Use aggressive mode?' 'Aggressive') {
         $manual = [ordered]@{
             CDPSvc = 'Connected Devices Platform'; DPS = 'Diagnostic Policy'; WdiServiceHost = 'Diagnostic Service Host'
             WdiSystemHost = 'Diagnostic System Host'; RasMan = 'Remote Access (VPN) Manager'; ShellHWDetection = 'AutoPlay'
@@ -882,10 +898,10 @@ function Invoke-Services {
         foreach ($e in $off.GetEnumerator()) { if (Set-SvcAll $e.Key 4) { $done += $e.Value } }
         Write-Ok ('Disabled: ' + (@($done | Where-Object { $_ }) -join ', '))
 
-        if (-not (Confirm-Yes 'Do you sign in with a fingerprint reader or face camera (Windows Hello)? (a PIN is fine either way)')) {
+        if (-not (Confirm-Yes 'Do you sign in with a fingerprint reader or face camera (Windows Hello)? (a PIN is fine either way)' 'Hello')) {
             if (Set-SvcAll 'WbioSrvc' 4) { Write-Ok 'Disabled: Windows Biometric Service' }
         }
-        if (Confirm-Yes 'Turn off SysMain? (SSD-only PCs: frees RAM, but games and apps may load slightly slower)') {
+        if (Confirm-Yes 'Turn off SysMain? (SSD-only PCs: frees RAM, but games and apps may load slightly slower)' 'SysMainOff') {
             if (Set-SvcAll 'SysMain' 4) { Write-Ok 'Disabled: SysMain' }
         } else { Write-Skip 'SysMain kept' }
     } else { Write-Skip 'Aggressive mode skipped' }
@@ -914,7 +930,7 @@ function Invoke-Mpo {
     Write-Title 'Multiplane Overlay (MPO) off'
     Write-Host '  Fixes flicker, black screens or stutter in borderless games / with video on a 2nd monitor on some setups.'
     Write-Host '  If you have none of those problems, leave MPO on.'
-    if (-not (Confirm-Yes 'Turn MPO off?')) { return }
+    if (-not (Confirm-Yes 'Turn MPO off?' 'Mpo')) { return }
     Set-Reg 'HKLM\SOFTWARE\Microsoft\Windows\Dwm' 'OverlayTestMode' 5
     Write-Ok 'MPO off after reboot'
     Save-Backup
@@ -953,7 +969,7 @@ function Invoke-NvidiaProfile {
     Write-Host '  Global settings: Prefer maximum performance, Low Latency On, texture filtering High performance,'
     Write-Host '  negative LOD bias Clamp, shader cache Unlimited, CUDA force-P2 off, Threaded optimisation On, Ansel off.'
     Write-Host '  NOT touched: ray tracing, anisotropic filtering, anti-aliasing, Resizable BAR, G-Sync on/off.'
-    $gsync = Confirm-Yes 'Do you use G-Sync / G-Sync Compatible (FreeSync monitor)?'
+    $gsync = Confirm-Yes 'Do you use G-Sync / G-Sync Compatible (FreeSync monitor)?' 'GSync'
 
     if (-not (Test-Path $DrsBack) -and (Test-Path $DrsDir)) {
         New-Item -ItemType Directory -Path $DrsBack -Force | Out-Null
@@ -1029,7 +1045,7 @@ function Invoke-NvidiaProfile {
 function Invoke-RevertAll {
     Write-Title 'Revert everything'
     if (-not (Test-Path $BackupFile)) { Write-Warn2 'No backup found - nothing to revert'; return }
-    if (-not (Confirm-Yes 'Put every setting this script changed back the way it was?')) { return }
+    if (-not (Confirm-Yes 'Put every setting this script changed back the way it was?' 'Revert')) { return }
 
     foreach ($e in @($script:Backup.Registry.Values)) {
         $p = Get-RegPsPath $e.Path
@@ -1172,8 +1188,434 @@ function Invoke-All {
 }
 #endregion
 
+#region ---------- GUI (window) ----------
+$GuiXaml = @'
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="GamingTweaks" Width="1200" Height="780" MinWidth="1000" MinHeight="620"
+        WindowStartupLocation="CenterScreen" Background="#0F1115" Foreground="#E5E7EB"
+        FontFamily="Segoe UI" FontSize="13">
+  <Window.Resources>
+    <Style TargetType="CheckBox">
+      <Setter Property="Foreground" Value="#F3F4F6"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Margin" Value="0,8,0,0"/>
+      <Setter Property="Cursor" Value="Hand"/>
+    </Style>
+    <Style TargetType="RadioButton">
+      <Setter Property="Foreground" Value="#F3F4F6"/>
+      <Setter Property="Margin" Value="0,6,18,0"/>
+      <Setter Property="Cursor" Value="Hand"/>
+    </Style>
+    <Style x:Key="Desc" TargetType="TextBlock">
+      <Setter Property="Foreground" Value="#9CA3AF"/>
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="TextWrapping" Value="Wrap"/>
+      <Setter Property="Margin" Value="22,2,0,2"/>
+    </Style>
+    <Style x:Key="CardTitle" TargetType="TextBlock">
+      <Setter Property="Foreground" Value="#60A5FA"/>
+      <Setter Property="FontSize" Value="11"/>
+      <Setter Property="FontWeight" Value="Bold"/>
+      <Setter Property="Margin" Value="0,0,0,2"/>
+    </Style>
+    <Style x:Key="Card" TargetType="Border">
+      <Setter Property="Background" Value="#171A21"/>
+      <Setter Property="BorderBrush" Value="#262B36"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="8"/>
+      <Setter Property="Padding" Value="16,12"/>
+      <Setter Property="Margin" Value="0,0,0,10"/>
+    </Style>
+    <Style TargetType="Button">
+      <Setter Property="Foreground" Value="#F3F4F6"/>
+      <Setter Property="Background" Value="#262B36"/>
+      <Setter Property="Margin" Value="8,0,0,0"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="B" Background="{TemplateBinding Background}" CornerRadius="6" Padding="16,9">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="B" Property="Opacity" Value="0.85"/></Trigger>
+              <Trigger Property="IsEnabled" Value="False"><Setter TargetName="B" Property="Opacity" Value="0.4"/></Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <Style TargetType="TabItem">
+      <Setter Property="Foreground" Value="#9CA3AF"/>
+      <Setter Property="FontSize" Value="14"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="TabItem">
+            <Border x:Name="Bd" Background="Transparent" CornerRadius="6" Padding="16,10" Margin="0,0,10,4" Width="150">
+              <ContentPresenter ContentSource="Header"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Bd" Property="Background" Value="#161B22"/></Trigger>
+              <Trigger Property="IsSelected" Value="True">
+                <Setter TargetName="Bd" Property="Background" Value="#1F2937"/>
+                <Setter Property="Foreground" Value="#FFFFFF"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+  </Window.Resources>
+
+  <Grid Margin="18">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="*"/>
+      <RowDefinition Height="Auto"/>
+    </Grid.RowDefinitions>
+
+    <StackPanel Grid.Row="0" Margin="0,0,0,14">
+      <StackPanel Orientation="Horizontal">
+        <TextBlock Text="GamingTweaks" FontSize="24" FontWeight="Bold"/>
+        <TextBlock x:Name="VerText" FontSize="13" Foreground="#6B7280" Margin="10,10,0,0"/>
+      </StackPanel>
+      <TextBlock x:Name="HwText" Foreground="#9CA3AF" Margin="0,4,0,0"/>
+    </StackPanel>
+
+    <Grid Grid.Row="1">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="*"/>
+        <ColumnDefinition Width="400"/>
+      </Grid.ColumnDefinitions>
+
+      <TabControl x:Name="Tabs" Grid.Column="0" TabStripPlacement="Left" Background="Transparent" BorderThickness="0" Padding="0">
+        <TabItem Header="Tweaks">
+          <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,0,10,0"><StackPanel x:Name="PanelTweaks"/></ScrollViewer>
+        </TabItem>
+        <TabItem Header="Your choices">
+          <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,0,10,0"><StackPanel x:Name="PanelChoices"/></ScrollViewer>
+        </TabItem>
+        <TabItem Header="Extras">
+          <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,0,10,0"><StackPanel x:Name="PanelExtras"/></ScrollViewer>
+        </TabItem>
+        <TabItem Header="Info + tools">
+          <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,0,10,0"><StackPanel x:Name="PanelInfo"/></ScrollViewer>
+        </TabItem>
+      </TabControl>
+
+      <Border Grid.Column="1" Background="#0B0D11" BorderBrush="#262B36" BorderThickness="1" CornerRadius="8" Margin="12,0,0,0">
+        <DockPanel>
+          <TextBlock DockPanel.Dock="Top" Text="LOG" Foreground="#6B7280" FontSize="11" FontWeight="Bold" Margin="12,10,0,4"/>
+          <RichTextBox x:Name="LogBox" IsReadOnly="True" Background="Transparent" BorderThickness="0" Foreground="#E5E7EB"
+                       FontFamily="Consolas" FontSize="12" Padding="8,0,8,8" VerticalScrollBarVisibility="Auto"/>
+        </DockPanel>
+      </Border>
+    </Grid>
+
+    <Grid Grid.Row="2" Margin="0,14,0,0">
+      <Grid.RowDefinitions>
+        <RowDefinition Height="Auto"/>
+        <RowDefinition Height="Auto"/>
+      </Grid.RowDefinitions>
+      <ProgressBar x:Name="Prog" Grid.Row="0" Height="6" Minimum="0" Maximum="100" Value="0"
+                   Background="#1F2937" Foreground="#22C55E" BorderThickness="0" Margin="0,0,0,10"/>
+      <DockPanel Grid.Row="1">
+        <TextBlock x:Name="Status" Foreground="#9CA3AF" VerticalAlignment="Center" Text="Ready. Tick what you want, then press Apply."/>
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+          <Button x:Name="BtnPreset" Content="Recommended"/>
+          <Button x:Name="BtnNone" Content="Untick all"/>
+          <Button x:Name="BtnRestore" Content="Restore point"/>
+          <Button x:Name="BtnRevert" Content="Revert everything" Background="#7F1D1D"/>
+          <Button x:Name="BtnApply" Content="Apply selected" Background="#2563EB" FontWeight="Bold"/>
+        </StackPanel>
+      </DockPanel>
+    </Grid>
+  </Grid>
+</Window>
+'@
+
+$script:Opt   = [ordered]@{}
+$script:Busy  = $false
+$script:CurPara = $null
+$GuiColors = @{
+    Green = '#4ADE80'; DarkGray = '#6B7280'; Gray = '#D1D5DB'; White = '#F9FAFB'; Yellow = '#FACC15'
+    Cyan = '#38BDF8'; Red = '#F87171'; Magenta = '#E879F9'; Blue = '#60A5FA'; DarkYellow = '#EAB308'
+}
+
+function Update-Gui {
+    if ($script:Window) { $script:Window.Dispatcher.Invoke([action]{}, [System.Windows.Threading.DispatcherPriority]::Background) }
+}
+
+function Add-GuiLog([string]$Text, [string]$Color, [bool]$NewLine) {
+    if (-not $script:LogBox) { return }
+    if (-not $script:CurPara) {
+        $script:CurPara = New-Object System.Windows.Documents.Paragraph
+        $script:CurPara.Margin = New-Object System.Windows.Thickness(0)
+        $script:LogBox.Document.Blocks.Add($script:CurPara)
+    }
+    $run = New-Object System.Windows.Documents.Run($Text)
+    $hex = $GuiColors[$Color]; if (-not $hex) { $hex = '#D1D5DB' }
+    $run.Foreground = (New-Object System.Windows.Media.BrushConverter).ConvertFromString($hex)
+    $script:CurPara.Inlines.Add($run)
+    if ($NewLine) { $script:CurPara = $null }
+    $script:LogBox.ScrollToEnd()
+    Update-Gui
+}
+
+function Add-Card($Panel, [string]$Title) {
+    $card = New-Object System.Windows.Controls.Border
+    $card.Style = $script:Window.FindResource('Card')
+    $stack = New-Object System.Windows.Controls.StackPanel
+    $t = New-Object System.Windows.Controls.TextBlock
+    $t.Text = $Title.ToUpper(); $t.Style = $script:Window.FindResource('CardTitle')
+    [void]$stack.Children.Add($t)
+    $card.Child = $stack
+    [void]$Panel.Children.Add($card)
+    return $stack
+}
+
+function Add-Opt($Stack, [string]$Key, [string]$Title, [string]$Desc, [bool]$Default, [bool]$Warn = $false, [bool]$Enabled = $true) {
+    $cb = New-Object System.Windows.Controls.CheckBox
+    $cb.Content = $Title
+    $cb.IsChecked = $Default
+    $cb.IsEnabled = $Enabled
+    if ($Warn) { $cb.Foreground = (New-Object System.Windows.Media.BrushConverter).ConvertFromString('#FBBF24') }
+    [void]$Stack.Children.Add($cb)
+    if ($Desc) {
+        $d = New-Object System.Windows.Controls.TextBlock
+        $d.Text = $Desc; $d.Style = $script:Window.FindResource('Desc')
+        [void]$Stack.Children.Add($d)
+    }
+    $script:Opt[$Key] = [pscustomobject]@{ Box = $cb; Default = $Default }
+}
+
+function Add-Text($Stack, [string]$Text) {
+    $d = New-Object System.Windows.Controls.TextBlock
+    $d.Text = $Text; $d.Style = $script:Window.FindResource('Desc'); $d.Margin = New-Object System.Windows.Thickness(0, 4, 0, 4)
+    [void]$Stack.Children.Add($d)
+}
+
+function Test-Opt([string]$Key) { return ($script:Opt.Contains($Key) -and [bool]$script:Opt[$Key].Box.IsChecked) }
+
+function Set-GuiBusy([bool]$On) {
+    $script:Busy = $On
+    foreach ($n in 'BtnPreset', 'BtnNone', 'BtnRestore', 'BtnRevert', 'BtnApply') { $script:Window.FindName($n).IsEnabled = -not $On }
+    $script:Window.FindName('Tabs').IsEnabled = -not $On
+    $script:Window.Cursor = if ($On) { [System.Windows.Input.Cursors]::Wait } else { $null }
+    Update-Gui
+}
+
+function Invoke-GuiTask([string]$Label, [scriptblock]$Work) {
+    if ($script:Busy) { return }
+    Set-GuiBusy $true
+    $script:Window.FindName('Status').Text = $Label
+    try { & $Work } catch { Write-Warn2 "$Label failed: $($_.Exception.Message)" }
+    $script:Window.FindName('Status').Text = 'Ready.'
+    Set-GuiBusy $false
+}
+
+function Start-Gui {
+    Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase
+    [xml]$xml = $GuiXaml
+    $script:Window = [Windows.Markup.XamlReader]::Load((New-Object System.Xml.XmlNodeReader $xml))
+    $script:LogBox = $script:Window.FindName('LogBox')
+    $script:LogBox.Document.PagePadding = New-Object System.Windows.Thickness(0)
+    $script:GuiMode = $true
+
+    # Everything the script prints now also goes to the log panel; nothing ever waits for typing
+    function global:Write-Host {
+        param([Parameter(Position = 0, ValueFromRemainingArguments = $true)][object[]]$Object,
+              [ConsoleColor]$ForegroundColor = [ConsoleColor]::Gray, $BackgroundColor, [switch]$NoNewline, $Separator = ' ')
+        $text = (@($Object) | ForEach-Object { "$_" }) -join $Separator
+        Add-GuiLog $text "$ForegroundColor" (-not $NoNewline)
+        try { Microsoft.PowerShell.Utility\Write-Host -Object $text -ForegroundColor $ForegroundColor -NoNewline:$NoNewline } catch {}
+    }
+    function global:Read-Host { param($Prompt) return '' }
+
+    $script:Window.Title = "GamingTweaks v$Version"
+    $script:Window.FindName('VerText').Text = "v$Version"
+    $script:Window.FindName('HwText').Text = "$WinName $WinVer  |  $(if ($IsLaptop) { 'Laptop' } else { 'Desktop' })  |  $CpuName  |  $($GpuNames -join ' + ')  |  $RamGB GB RAM"
+
+    # ---------------- Tweaks tab ----------------
+    $p = $script:Window.FindName('PanelTweaks')
+    $c = Add-Card $p 'Safety'
+    Add-Opt $c 'Restore' 'Create a restore point first' 'Strongly recommended. Every change is also saved to C:\GamingTweaks\backup.json so "Revert everything" can undo it.' $true
+    $c = Add-Card $p 'Performance'
+    Add-Opt $c 'Power'  'Power plan' 'Own Ultimate-based plan, aggressive turbo boost, max-performance energy preference, cores unparked, no PCIe / USB / disk power saving. Laptops: plugged-in settings only. Dual-CCD X3D: core parking kept.' $true
+    Add-Opt $c 'Gaming' 'Gaming & input' 'Game Mode on, Game DVR off, foreground CPU boost, multimedia "Games" priority, raw mouse input, no Sticky Keys pop-ups, no startup delay, Realtek audio never sleeps, transparency off, memory compression off (16 GB+).' $true
+    Add-Opt $c 'Gpu'    'GPU' 'Hardware-accelerated GPU scheduling, optimisations for windowed games, MSI interrupt mode, NVIDIA telemetry tasks off.' $true
+    Add-Opt $c 'Timer'  'Timer resolution' 'Sets 0.5 ms or 1.0 ms at every boot (choose on the "Your choices" tab) for steadier frame pacing.' $true
+    Add-Opt $c 'Games'  'Game priority' 'Above Normal CPU priority for Apex, CS2, Valorant, Fortnite, CoD, R6, Overwatch, PUBG, Rocket League and Marvel Rivals.' $true
+    Add-Opt $c 'Nvidia' 'NVIDIA driver profile' $(if ($HasNvidia) { 'Downloads NVIDIA Profile Inspector, backs up your profile, then sets max performance, Low Latency On, High performance texture filtering, unlimited shader cache and more.' } else { 'No NVIDIA graphics card found.' }) $HasNvidia $false $HasNvidia
+    $c = Add-Card $p 'Windows'
+    Add-Opt $c 'Background' 'Background & privacy' 'Telemetry, ads, tips, Bing search, Copilot, Recall, Widgets, background apps, activity history, settings sync and tracking off.' $true
+    Add-Opt $c 'Services'   'Services' 'Unused services off (maps, fax, smart card, insider, Hyper-V guest, vendor telemetry...). Printing, Bluetooth, sharing, search and aggressive mode are on the "Your choices" tab.' $true
+    Add-Opt $c 'Updates'    'Windows Update off' 'Automatic updates paused 10 years, driver updates blocked, version locked. The Microsoft Store keeps working.' $true
+    Add-Opt $c 'Network'    'Network' 'Network throttling and Nagle off, adapter power saving / EEE / coalescing off, network card MSI mode, game traffic marked high priority.' $true
+    Add-Opt $c 'Cleanup'    'Cleanup' 'Temp files, old update downloads, Delivery Optimization cache, crash dumps, error reports, Discord cache. More options on "Your choices".' $true
+
+    # ---------------- Your choices tab ----------------
+    $p = $script:Window.FindName('PanelChoices')
+    $c = Add-Card $p 'Services - tick what you USE (unticked = turned off)'
+    Add-Opt $c 'Printer'   'I use a printer (or "Microsoft Print to PDF")' '' $true
+    Add-Opt $c 'Bluetooth' 'I use Bluetooth (headphones, controller, mouse, phone)' '' $true
+    Add-Opt $c 'Sharing'   'I share folders with other PCs / use a NAS' 'Opening files on a NAS works either way; this is about other PCs reaching yours.' $false
+    Add-Opt $c 'Hello'     'I sign in with a fingerprint or face camera (Windows Hello)' 'A PIN works either way. Only used by aggressive mode.' $IsLaptop
+    $c = Add-Card $p 'Services - extra'
+    Add-Opt $c 'Aggressive' 'Aggressive mode' '~25 more services set to start only when needed or turned off. Store downloads, Xbox networking, sign-in, notifications and typing still work. Aim: ~75-90 running services.' $true
+    Add-Opt $c 'SearchOff'  'Turn off Windows Search indexing' 'Start still finds apps and settings; searching for files gets slower.' $false
+    Add-Opt $c 'SysMainOff' 'Turn off SysMain' 'Frees RAM on SSD-only PCs, but games and apps may load slightly slower.' $false
+    $c = Add-Card $p 'Timer resolution'
+    $tp = New-Object System.Windows.Controls.StackPanel; $tp.Orientation = 'Horizontal'
+    $script:Rb05 = New-Object System.Windows.Controls.RadioButton; $script:Rb05.Content = '0.5 ms (most common)'; $script:Rb05.GroupName = 'T'; $script:Rb05.IsChecked = $true
+    $script:Rb10 = New-Object System.Windows.Controls.RadioButton; $script:Rb10.Content = '1.0 ms (sometimes steadier)'; $script:Rb10.GroupName = 'T'
+    [void]$tp.Children.Add($script:Rb05); [void]$tp.Children.Add($script:Rb10); [void]$c.Children.Add($tp)
+    Add-Text $c 'Use "Timer test" on the Info tab to compare them.'
+    $c = Add-Card $p 'Graphics & network'
+    Add-Opt $c 'GSync'   'I use G-Sync / G-Sync Compatible (FreeSync monitor)' 'Sets V-Sync for the G-Sync recipe in the NVIDIA profile; otherwise V-Sync is forced off.' $false
+    Add-Opt $c 'LowPing' 'Lowest-ping mode' 'Turns off network card interrupt moderation: slightly more CPU use, slightly lower latency.' $false
+    Add-Opt $c 'Edge'    'Block Edge ads, shopping, Copilot sidebar and telemetry' 'Edge will then show "managed by your organisation" - that is normal for policies.' $false
+    $c = Add-Card $p 'Cleanup'
+    Add-Opt $c 'Shader'  'Clear GPU shader caches' 'Only right after a graphics driver update - games stutter briefly while they rebuild.' $false
+    Add-Opt $c 'Recycle' 'Empty the Recycle Bin' '' $false
+    Add-Opt $c 'WinSxS'  'Clean up the Windows component store (WinSxS)' 'Safe and often frees several GB, but takes a few minutes.' $false
+
+    # ---------------- Extras tab ----------------
+    $p = $script:Window.FindName('PanelExtras')
+    $c = Add-Card $p 'Apps'
+    Add-Opt $c 'Bloat' 'Remove bloat apps' 'News, Weather, Bing, Get Help, Tips, Office hub, Solitaire, People, Power Automate, To Do, Feedback Hub, Maps, Films & TV, Cortana, Dev Home, new Outlook, Copilot, Journal, Clipchamp, Teams, Phone Link, Family. Kept: Store, Xbox, Photos, Calculator, Notepad, Paint, Terminal, Snipping Tool, Camera. Not undone by Revert (reinstall from the Store).' $false
+    $c = Add-Card $p 'FPS for security - your call'
+    Add-Opt $c 'Vbs'      'Core Isolation / VBS off' 'Often +5-10% FPS in CPU-heavy games. If a FACEIT / Vanguard game complains, Revert or turn Memory Integrity back on.' $false $true
+    Add-Opt $c 'Uac'      'UAC prompts off ("Never notify")' 'Store apps keep working.' $false $true
+    Add-Opt $c 'Defender' 'Microsoft Defender off' 'Needs Tamper Protection off first - the script opens the right page if it is still on.' $false $true
+    Add-Opt $c 'Spectre'  'Spectre / Meltdown mitigations off' "Older CPUs only (Intel up to ~10th gen, Ryzen 1000/2000). Can be SLOWER on newer CPUs. Yours: $CpuName" $false $true
+    $c = Add-Card $p 'Display & network'
+    Add-Opt $c 'Mpo' 'Multiplane Overlay (MPO) off' 'Only if you get flicker or stutter in borderless games or with a second monitor.' $false
+    $dl = New-Object System.Windows.Controls.TextBlock; $dl.Text = 'DNS servers'; $dl.FontWeight = 'SemiBold'; $dl.Margin = New-Object System.Windows.Thickness(0, 10, 0, 4)
+    [void]$c.Children.Add($dl)
+    $script:DnsBox = New-Object System.Windows.Controls.ComboBox
+    $script:DnsBox.Width = 320; $script:DnsBox.HorizontalAlignment = 'Left'
+    foreach ($i in "Don't change", 'Cloudflare 1.1.1.1 (usually fastest)', 'Google 8.8.8.8', 'Quad9 9.9.9.9 (blocks malware domains)', 'Automatic (router / ISP)') { [void]$script:DnsBox.Items.Add($i) }
+    $script:DnsBox.SelectedIndex = 0
+    [void]$c.Children.Add($script:DnsBox)
+
+    # ---------------- Info tab ----------------
+    $p = $script:Window.FindName('PanelInfo')
+    $c = Add-Card $p 'Check your PC'
+    Add-Text $c 'PC info shows your hardware, anti-cheat, VBS, power plan, HAGS, before/after running services, processes and RAM, and your startup apps - in the log on the right.'
+    $bp = New-Object System.Windows.Controls.WrapPanel
+    foreach ($b in @(@('PC info', 'BtnInfo'), @('Timer test', 'BtnTimer'), @('Open backup folder', 'BtnFolder'))) {
+        $btn = New-Object System.Windows.Controls.Button; $btn.Content = $b[0]; $btn.Name = $b[1]; $btn.Margin = New-Object System.Windows.Thickness(0, 8, 8, 0)
+        [void]$bp.Children.Add($btn)
+        Set-Variable -Name $b[1] -Value $btn -Scope Script
+    }
+    [void]$c.Children.Add($bp)
+    $c = Add-Card $p 'Do these by hand - the biggest real gains'
+    Add-Text $c "BIOS: XMP / EXPO on, Resizable BAR on, Ryzen: PBO with a negative Curve Optimizer.`nDrivers: clean install with NVCleanstall.`nIn game: NVIDIA Reflex on, cap FPS a few frames under your refresh rate.`nG-Sync: on, V-Sync on in the control panel, off in game.`nWindows: highest refresh rate in Settings > Display, trim Task Manager > Startup apps."
+    $c = Add-Card $p 'Text menu'
+    Add-Text $c 'Prefer the old text menu? Run Run-GamingTweaks-Console.cmd - it shares the same backup, so Revert works from either.'
+
+    # ---------------- buttons ----------------
+    $script:Window.FindName('BtnPreset').Add_Click({
+        foreach ($k in $script:Opt.Keys) { if ($script:Opt[$k].Box.IsEnabled) { $script:Opt[$k].Box.IsChecked = $script:Opt[$k].Default } }
+        $script:Rb05.IsChecked = $true; $script:DnsBox.SelectedIndex = 0
+        $script:Window.FindName('Status').Text = 'Recommended settings ticked.'
+    })
+    $script:Window.FindName('BtnNone').Add_Click({
+        foreach ($k in $script:Opt.Keys) { $script:Opt[$k].Box.IsChecked = $false }
+        $script:DnsBox.SelectedIndex = 0
+        $script:Window.FindName('Status').Text = 'Everything unticked.'
+    })
+    $script:Window.FindName('BtnRestore').Add_Click({ Invoke-GuiTask 'Creating a restore point...' { New-RestorePoint } })
+    $script:BtnInfo.Add_Click({ Invoke-GuiTask 'Reading PC info...' { Show-Info } })
+    $script:BtnTimer.Add_Click({ Invoke-GuiTask 'Measuring timer...' { Test-Timer } })
+    $script:BtnFolder.Add_Click({ Start-Process explorer.exe $Root })
+
+    $script:Window.FindName('BtnRevert').Add_Click({
+        $r = [System.Windows.MessageBox]::Show('Put every setting GamingTweaks changed back the way it was?', 'Revert everything', 'YesNo', 'Warning')
+        if ($r -ne 'Yes') { return }
+        $script:Answers = @{ Revert = $true }
+        Invoke-GuiTask 'Reverting...' { Invoke-RevertAll }
+        [void][System.Windows.MessageBox]::Show('Reverted. Reboot to finish.', 'GamingTweaks', 'OK', 'Information')
+    })
+
+    $script:Window.FindName('BtnApply').Add_Click({
+        # Answers for the questions the tweak sections ask
+        $a = @{}
+        foreach ($k in $script:Opt.Keys) { $a[$k] = [bool]$script:Opt[$k].Box.IsChecked }
+        $a['TimerRes'] = if ($script:Rb10.IsChecked) { '2' } else { '1' }
+        $a['Dns']      = switch ($script:DnsBox.SelectedIndex) { 1 { '1' } 2 { '2' } 3 { '3' } 4 { '4' } default { '' } }
+        $script:Answers = $a
+
+        $steps = New-Object System.Collections.ArrayList
+        $plan = @(
+            @('Restore',    'Restore point',          { New-RestorePoint }),
+            @('Power',      'Power plan',             { Invoke-Power }),
+            @('Gaming',     'Gaming & input',         { Invoke-Gaming }),
+            @('Gpu',        'GPU',                    { Invoke-Gpu }),
+            @('Background', 'Background & privacy',   { Invoke-Background }),
+            @('Services',   'Services',               { Invoke-Services }),
+            @('Updates',    'Windows Update',         { Invoke-UpdatesOff }),
+            @('Network',    'Network',                { Invoke-Network }),
+            @('Timer',      'Timer resolution',       { Invoke-TimerRes }),
+            @('Games',      'Game priority',          { Invoke-Games }),
+            @('Nvidia',     'NVIDIA profile',         { Invoke-NvidiaProfile }),
+            @('Bloat',      'Remove bloat apps',      { Invoke-Bloat }),
+            @('Vbs',        'Core Isolation off',     { Invoke-Vbs }),
+            @('Uac',        'UAC prompts off',        { Invoke-Uac }),
+            @('Defender',   'Defender off',           { Invoke-Defender }),
+            @('Spectre',    'Spectre / Meltdown off', { Invoke-Spectre }),
+            @('Mpo',        'MPO off',                { Invoke-Mpo })
+        )
+        foreach ($step in $plan) { if ($a[$step[0]]) { [void]$steps.Add($step) } }
+        if ($a['Dns'])     { [void]$steps.Add(@('Dns', 'DNS servers', { Invoke-Dns })) }
+        if ($a['Cleanup']) { [void]$steps.Add(@('Cleanup', 'Cleanup', { Invoke-Cleanup })) }
+        if ($steps.Count -eq 0) { $script:Window.FindName('Status').Text = 'Nothing ticked.'; return }
+
+        Set-GuiBusy $true
+        Save-Baseline
+        $prog = $script:Window.FindName('Prog'); $status = $script:Window.FindName('Status')
+        $i = 0
+        foreach ($s in $steps) {
+            $i++
+            $status.Text = "Step $i of $($steps.Count): $($s[1])..."
+            $prog.Value = [math]::Round(($i - 1) / $steps.Count * 100)
+            Update-Gui
+            try { & $s[2] } catch { Write-Warn2 "$($s[1]) failed: $($_.Exception.Message)" }
+        }
+        Save-Backup
+        $prog.Value = 100
+        $status.Text = "Done - $($steps.Count) steps applied. Reboot to finish."
+        Write-Title 'Finished'
+        Write-Host '  Reboot, then use "PC info" on the Info tab to see before / after.' -ForegroundColor Green
+        Set-GuiBusy $false
+        $r = [System.Windows.MessageBox]::Show("All done ($($steps.Count) steps).`n`nReboot now to finish?", 'GamingTweaks', 'YesNo', 'Question')
+        if ($r -eq 'Yes') { Restart-Computer -Force }
+    })
+
+    Write-Host "GamingTweaks v$Version ready." -ForegroundColor Cyan
+    Write-Host "Backup: $(if (Test-Path $BackupFile) { "$($script:Backup.Registry.Count) settings saved" } else { 'none yet' })" -ForegroundColor DarkGray
+    if ($IsDualX3D) { Write-Host "Dual-CCD X3D detected: core parking and Game Bar will be kept." -ForegroundColor Yellow }
+    if ($AntiCheat) { Write-Host "Anti-cheat found: $($AntiCheat -join ', ')" -ForegroundColor DarkGray }
+
+    [void]$script:Window.ShowDialog()
+}
+#endregion
+
 #region ---------- menu ----------
 Import-Backup
+if (-not $Console) {
+    try { Start-Gui; try { Stop-Transcript | Out-Null } catch {}; exit }
+    catch {
+        $script:GuiMode = $false
+        Remove-Item Function:\Write-Host, Function:\Read-Host -ErrorAction SilentlyContinue
+        try { $null = [System.Windows.MessageBox]::Show("The window could not open:`n$($_.Exception.Message)`n`nSwitching to the text menu (check the taskbar).", 'GamingTweaks') } catch {}
+        Write-Warn2 "Window failed: $($_.Exception.Message) - using the text menu"
+        try { $Host.UI.RawUI.WindowTitle = "GamingTweaks v$Version" } catch {}
+    }
+}
 while ($true) {
     Clear-Host
     Write-Host ''

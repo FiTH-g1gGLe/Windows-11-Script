@@ -1,6 +1,6 @@
 
    ==================================================================
-                         G A M I N G T W E A K S   v1.1.0
+                         G A M I N G T W E A K S   v1.2.0
          One menu. Every change backed up. One key to undo it all.
    ==================================================================
 
@@ -14,13 +14,21 @@
     QUICK START
    ------------------------------------------------------------------
 
-     1.  Extract the zip (keep all three files together)
+     1.  Extract the zip (keep all the files together)
      2.  Double-click  Run-GamingTweaks.cmd  and accept the admin prompt
-     3.  Press  1  to apply everything recommended
-     4.  Reboot
-     5.  Press  I  to check everything applied
+         - the GamingTweaks window opens
+     3.  Look through the Tweaks / Your choices / Extras tabs
+         (recommended options are already ticked)
+     4.  Click  Apply selected , then reboot
+     5.  Info + tools tab > PC info  shows before / after
 
-     Changed your mind?  Run it again and press  R .
+     Changed your mind?  Click  Revert everything .
+
+     PREFER THE TEXT MENU?
+     Double-click  Run-GamingTweaks-Console.cmd  then press  1 ,
+     I  after rebooting, or  R  to revert. Same backup either way.
+     The menu keys below are for the text menu - the window has a
+     tick box for each one.
 
      Backup + logs live in   C:\GamingTweaks
 

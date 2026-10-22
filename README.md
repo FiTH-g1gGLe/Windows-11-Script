@@ -7,7 +7,7 @@
 A Windows 10/11 gaming optimisation script that adapts to your PC, keeps the Microsoft Store,
 Xbox and anti-cheat working, and can put everything back exactly as it was.
 
-`v1.1.0` · PowerShell · Windows 10 / 11
+`v1.2.0` · PowerShell · Windows 10 / 11 · Window or text menu
 
 </div>
 
@@ -16,11 +16,23 @@ Xbox and anti-cheat working, and can put everything back exactly as it was.
 ## ⚡ Quick start
 
 1. Click the green **Code** button above, then **Download ZIP**, and extract it
-2. Double-click **`Run-GamingTweaks.cmd`** and accept the admin prompt
-3. Press **`1`** to apply everything recommended
-4. Reboot, then press **`I`** to check everything applied
+2. Double-click **`Run-GamingTweaks.cmd`** and accept the admin prompt — the GamingTweaks window opens
+3. Check the **Tweaks**, **Your choices** and **Extras** tabs (the recommended options are already ticked)
+4. Click **Apply selected**, then reboot
+5. Open **Info + tools → PC info** to see before / after
 
-Changed your mind? Run it again and press **`R`**.
+Changed your mind? Click **Revert everything**.
+
+### Prefer the text menu?
+Double-click **`Run-GamingTweaks-Console.cmd`** (or run `Run-GamingTweaks.cmd -Console`) and press **`1`**,
+then **`I`** after rebooting, or **`R`** to revert. Both use the same backup, so you can apply in one
+and revert in the other.
+
+| Window | Text menu |
+|---|---|
+| Tick boxes for every section and question, set everything up front | Asks yes / no as it goes |
+| Live colour log, progress bar, one click to apply | Same log in the console |
+| Recommended / Untick all / Restore point / Revert buttons | Keys `1`-`9`, `S` `G` `N` `A`-`F` `M` `T` `P` `I` `R` |
 
 > Backup and logs are kept in `C:\GamingTweaks`.
 
@@ -52,7 +64,9 @@ Changed your mind? Run it again and press **`R`**.
 
 ---
 
-## 📋 The menu
+## 📋 What it does
+
+The window and the text menu run exactly the same sections (keys shown for the text menu):
 
 | Key | Section | What it does |
 |:-:|---|---|
@@ -171,7 +185,8 @@ These appear in other tweak tools. They break things, risk your data or hardware
 
 | File | |
 |---|---|
-| `Run-GamingTweaks.cmd` | Double-click this to start |
+| `Run-GamingTweaks.cmd` | Double-click this to start (opens the window) |
+| `Run-GamingTweaks-Console.cmd` | Text-menu version |
 | `GamingTweaks.ps1` | The script itself |
 | `README.txt` | Offline copy of this guide |
 | `legacy/Windows11.bat` | The original 2024 script, kept for reference — **not recommended**, see [CHANGELOG](CHANGELOG.md) |
