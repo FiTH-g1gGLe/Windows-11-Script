@@ -1,6 +1,6 @@
 
    ==================================================================
-                         G A M I N G T W E A K S   v1.0.0
+                         G A M I N G T W E A K S   v1.1.0
          One menu. Every change backed up. One key to undo it all.
    ==================================================================
 
@@ -163,6 +163,11 @@
         Always kept: Windows Update + Store, Xbox Live / Game Save /
                      controllers, audio, networking, UPnP (NAT type),
                      SysMain, Microsoft account sign-in.
+        Aggressive mode (asks first): ~25 more services set to start
+        only when needed or turned off - Store downloads, Xbox
+        networking, sign-in, notifications and typing still work.
+        Typical clean Win11 desktop: ~110-130 running before,
+        ~85-95 after, ~75-85 with no Bluetooth/printer/sharing/search.
 
    ------------------------------------------------------------------
    [G]  GAME PRIORITY
@@ -214,7 +219,8 @@
    [T]  Timer test ....... measures how accurately Windows wakes up
    [P]  Restore point .... make one any time
    [I]  PC info .......... hardware, anti-cheat, VBS, power plan,
-                           HAGS status and your startup apps
+                           HAGS, before/after services + RAM,
+                           and your startup apps
    [R]  REVERT EVERYTHING
 
 

@@ -24,7 +24,7 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
     exit
 }
 
-$Version = '1.0.0'
+$Version = '1.1.0'
 $ErrorActionPreference = 'Continue'
 $ProgressPreference    = 'SilentlyContinue'
 $Host.UI.RawUI.WindowTitle = "GamingTweaks v$Version"
@@ -131,6 +131,17 @@ function Set-Reg {
 # Windows defaults, used as the "original" if a service is already at the target value
 # (e.g. a previous run was closed before it could save its backup)
 $SvcDefaults = @{ DiagTrack = 2; dmwappushservice = 3; 'diagnosticshub.standardcollector.service' = 3; WerSvc = 3; Ndu = 2 }
+# Per-user services (e.g. NPSMSvc) have a template plus one copy per user (NPSMSvc_1a2b3) - set them all
+function Set-SvcAll([string]$Name, [int]$Start) {
+    $root = 'HKLM\SYSTEM\CurrentControlSet\Services'
+    $hit = $false
+    foreach ($k in (Get-ChildItem -LiteralPath (Get-RegPsPath $root) -ErrorAction SilentlyContinue |
+                    Where-Object { $_.PSChildName -eq $Name -or $_.PSChildName -like "$($Name)_*" })) {
+        Set-Svc $k.PSChildName $Start; $hit = $true
+    }
+    return $hit
+}
+
 function Set-Svc([string]$Name, [int]$Start) {
     $k = "HKLM\SYSTEM\CurrentControlSet\Services\$Name"
     if (-not (Test-Path -LiteralPath (Get-RegPsPath $k))) { Write-Skip "service $Name not present"; return }
@@ -165,6 +176,7 @@ function Set-Flag([string]$Name, $Value) {
 
 #region ---------- 0. restore point ----------
 function New-RestorePoint {
+    Save-Baseline
     Write-Title 'Restore point'
     try {
         Enable-ComputerRestore -Drive "$env:SystemDrive\" -ErrorAction Stop
@@ -845,6 +857,41 @@ function Invoke-Services {
         Off ([ordered]@{ WSearch = 'Windows Search indexing' })
     } else { Write-Skip 'Search indexing kept' }
 
+    Write-Host ''
+    Write-Host '  AGGRESSIVE MODE: more always-running services set to start only when needed, plus more turned off.' -ForegroundColor Cyan
+    Write-Host '  Still kept: Store downloads (BITS, Delivery Optimization), Xbox networking (IP Helper), sign-in,'
+    Write-Host '  notifications, typing / search box, audio, display, networking.'
+    if (Confirm-Yes 'Use aggressive mode?') {
+        $manual = [ordered]@{
+            CDPSvc = 'Connected Devices Platform'; DPS = 'Diagnostic Policy'; WdiServiceHost = 'Diagnostic Service Host'
+            WdiSystemHost = 'Diagnostic System Host'; RasMan = 'Remote Access (VPN) Manager'; ShellHWDetection = 'AutoPlay'
+            StorSvc = 'Storage Service'; UsoSvc = 'Update Orchestrator'; edgeupdate = 'Edge Update'; edgeupdatem = ''
+        }
+        $done = @()
+        foreach ($e in $manual.GetEnumerator()) { if (Set-SvcAll $e.Key 3) { $done += $e.Value } }
+        Write-Ok ('Start only when needed: ' + (@($done | Where-Object { $_ }) -join ', '))
+
+        $off = [ordered]@{
+            WSAIFabricSvc = 'Windows AI Fabric'; lfsvc = 'Geolocation'; webthreatdefsvc = 'Web Threat Defense'
+            webthreatdefusersvc = ''; NPSMSvc = 'Now Playing media flyout'; OneSyncSvc = 'Mail/Calendar sync'
+            MessagingService = 'Text messaging'; AarSvc = 'Voice assistant activation'; P9RdrService = 'WSL file access'
+            PimIndexMaintenanceSvc = 'Contacts indexing'
+        }
+        if (-not $IsDualX3D) { $off['BcastDVRUserService'] = 'Game recording (DVR)' }
+        $done = @()
+        foreach ($e in $off.GetEnumerator()) { if (Set-SvcAll $e.Key 4) { $done += $e.Value } }
+        Write-Ok ('Disabled: ' + (@($done | Where-Object { $_ }) -join ', '))
+
+        if (-not (Confirm-Yes 'Do you sign in with a fingerprint reader or face camera (Windows Hello)? (a PIN is fine either way)')) {
+            if (Set-SvcAll 'WbioSrvc' 4) { Write-Ok 'Disabled: Windows Biometric Service' }
+        }
+        if (Confirm-Yes 'Turn off SysMain? (SSD-only PCs: frees RAM, but games and apps may load slightly slower)') {
+            if (Set-SvcAll 'SysMain' 4) { Write-Ok 'Disabled: SysMain' }
+        } else { Write-Skip 'SysMain kept' }
+    } else { Write-Skip 'Aggressive mode skipped' }
+
+    Write-Host ''
+    Write-Host "  Running services right now: $((Get-Service | Where-Object Status -eq 'Running').Count) (drops further after the reboot)"
     Write-Skip 'Changes take full effect after a reboot. Revert [R] restores every service.'
     Save-Backup
 }
@@ -1055,6 +1102,21 @@ function Invoke-RevertAll {
 #endregion
 
 #region ---------- info + all ----------
+function Get-Snapshot {
+    $os = Get-CimInstance Win32_OperatingSystem
+    return [ordered]@{
+        Date     = (Get-Date).ToString('yyyy-MM-dd HH:mm')
+        Services = (Get-Service | Where-Object Status -eq 'Running').Count
+        Procs    = (Get-Process).Count
+        RamGB    = [math]::Round(($os.TotalVisibleMemorySize - $os.FreePhysicalMemory) / 1MB, 1)
+    }
+}
+function Save-Baseline {
+    if (-not $script:Backup.Flags.ContainsKey('Baseline')) {
+        $script:Backup.Flags['Baseline'] = Get-Snapshot
+        Save-Backup
+    }
+}
 function Show-Info {
     Write-Title 'This PC'
     Write-Host "  Windows : $WinName $WinVer (build $Build)"
@@ -1069,6 +1131,19 @@ function Show-Info {
     Write-Host "  Power   : $(((powercfg /getactivescheme) -join ' ') -replace '^.*\(|\)\s*$', '')"
     Write-Host "  HAGS    : $(if ((Get-RegValue 'HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers' 'HwSchMode') -eq 2) { 'on' } else { 'off/default' })"
     Write-Host "  Backup  : $(if (Test-Path $BackupFile) { "$($script:Backup.Registry.Count) values saved in $BackupFile" } else { 'none yet' })"
+    $b = $script:Backup.Flags['Baseline']
+    $n = Get-Snapshot
+    Write-Title 'Before / after'
+    if ($b) {
+        Write-Host ("  {0,-18}{1,10}{2,10}" -f '', 'Before', 'Now')
+        Write-Host ("  {0,-18}{1,10}{2,10}" -f 'Running services', $b.Services, $n.Services)
+        Write-Host ("  {0,-18}{1,10}{2,10}" -f 'Processes', $b.Procs, $n.Procs)
+        Write-Host ("  {0,-18}{1,10}{2,10}" -f 'RAM in use (GB)', $b.RamGB, $n.RamGB)
+        Write-Host "  'Before' was measured $($b.Date). Compare after a reboot, a minute after logging in."
+    } else {
+        Write-Host "  Running services: $($n.Services) | Processes: $($n.Procs) | RAM in use: $($n.RamGB) GB"
+        Write-Host '  (A "before" snapshot is saved automatically the first time you apply anything.)'
+    }
     Write-Title 'Startup apps (disable what you do not need: Task Manager > Startup apps)'
     Get-CimInstance Win32_StartupCommand -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "  - $($_.Name)" }
 }
@@ -1123,6 +1198,7 @@ while ($true) {
     Write-Host ''
     $c = "$(Read-Host '  Choose')".Trim().ToUpper()
     if ($c -notin '1','2','3','4','5','6','7','8','9','A','B','C','D','E','F','G','N','M','T','S','P','I','R','Q') { continue }
+    if ($c -notin 'I', 'T', 'Q', 'R', 'P') { Save-Baseline }
     switch ($c) {
         '1' { Invoke-All }
         '2' { Invoke-Power }
