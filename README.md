@@ -7,7 +7,7 @@
 A Windows 10/11 gaming optimisation script that adapts to your PC, keeps the Microsoft Store,
 Xbox and anti-cheat working, and can put everything back exactly as it was.
 
-`v1.0.0` · PowerShell · Windows 10 / 11
+`v1.1.0` · PowerShell · Windows 10 / 11
 
 </div>
 
@@ -65,7 +65,7 @@ Changed your mind? Run it again and press **`R`**.
 | **7** | Network | Throttling and Nagle off, adapter power saving / EEE / coalescing off, NIC MSI mode, DSCP 46 game traffic priority, optional lowest-ping mode |
 | **8** | Timer resolution | 0.5 ms or 1.0 ms at every boot |
 | **9** | Cleanup | Temp, update + Delivery Optimization caches, crash dumps, Discord cache; asks about shader caches, Recycle Bin and WinSxS; shows space freed |
-| **S** | Services | ~40 unused services off; asks about printing, Bluetooth, file sharing and search indexing |
+| **S** | Services | ~40 unused services off; asks about printing, Bluetooth, file sharing and search indexing; optional **aggressive mode** (~25 more set to on-demand or off) |
 | **G** | Game priority | Above Normal CPU priority for Apex and 9 other games, MMCSS IO latency cap off |
 | **N** | NVIDIA profile | Downloads NVIDIA Profile Inspector, backs up your profile, imports 12 tuned settings |
 
@@ -82,7 +82,7 @@ Changed your mind? Run it again and press **`R`**.
 | **M** | MPO off | Only if you get flicker or stutter in borderless games |
 | **T** | Timer test | Measures how accurately Windows wakes up |
 | **P** | Restore point | Make one any time |
-| **I** | PC info | Hardware, anti-cheat, VBS, power plan, HAGS and startup apps |
+| **I** | PC info | Hardware, anti-cheat, VBS, power plan, HAGS, **before/after** services, processes and RAM, startup apps |
 | **R** | **Revert everything** | Puts every recorded setting back |
 
 <details>
@@ -108,8 +108,19 @@ Profile Inspector is downloaded from its [official GitHub](https://github.com/Or
 <details>
 <summary><b>🔧 Services kept on purpose (option S)</b></summary>
 
-Windows Update and the Microsoft Store, Xbox Live / Game Save / controllers, audio, networking,
-UPnP (keeps your NAT type open), SysMain and Microsoft account sign-in.
+**Always kept:** Windows Update and the Microsoft Store, Store downloads (BITS, Delivery Optimization),
+Xbox Live / Game Save / controllers / networking, Microsoft account sign-in, notifications, typing and
+the search box, audio, display, networking and UPnP (keeps your NAT type open).
+
+**Aggressive mode** (asks first) sets Connected Devices, Diagnostic Policy, Remote Access, AutoPlay,
+Storage Service, Update Orchestrator and Edge Update to start only when needed, and turns off AI Fabric,
+Geolocation, Web Threat Defense, Now Playing, Mail/Calendar sync, messaging, voice activation, WSL file
+access, contacts indexing and game recording. It also asks about Windows Hello biometrics and SysMain.
+
+**Typical result on a clean Windows 11 desktop:** ~110-130 running services before, ~85-95 after
+aggressive mode, ~75-85 if you also say no to Bluetooth, printing, file sharing and search indexing.
+Motherboard / RGB / vendor apps add their own services on top - uninstalling those is the next biggest win.
+Check your own numbers with **`I`**.
 
 </details>
 

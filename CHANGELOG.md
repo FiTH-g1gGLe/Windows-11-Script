@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.1.0
+- **Aggressive services mode** in `S`: ~25 more services set to start on demand or turned off,
+  while keeping the Store, Xbox, sign-in, notifications and typing working
+- Per-user services (e.g. `NPSMSvc_1a2b3`) are now handled along with their templates
+- Optional: Windows Hello biometrics service and SysMain
+- **Before / after report** in `I`: running services, processes and RAM, measured automatically
+  the first time anything is applied
+
 ## v1.0.0 — GamingTweaks
 
 A complete rewrite. The old `Windows11.bat` has been replaced by **GamingTweaks**, a PowerShell menu script.
