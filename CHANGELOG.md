@@ -1,5 +1,8 @@
 # Changelog
 
+## v1.2.1
+- Graphics cards disabled in Device Manager (e.g. an unused integrated GPU) are no longer shown or tweaked
+
 ## v1.2.0
 - **New window (GUI)** — opens by default from `Run-GamingTweaks.cmd`
   - Tabs: Tweaks, Your choices, Extras, Info + tools

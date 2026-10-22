@@ -28,7 +28,7 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
     exit
 }
 
-$Version = '1.2.0'
+$Version = '1.2.1'
 $ErrorActionPreference = 'Continue'
 $ProgressPreference    = 'SilentlyContinue'
 $Host.UI.RawUI.WindowTitle = "GamingTweaks v$Version"
@@ -70,7 +70,9 @@ $WinVer    = $cv.DisplayVersion
 $Chassis   = @((Get-CimInstance Win32_SystemEnclosure -ErrorAction SilentlyContinue).ChassisTypes)
 $HasBatt   = [bool](Get-CimInstance Win32_Battery -ErrorAction SilentlyContinue)
 $IsLaptop  = $HasBatt -or [bool]($Chassis | Where-Object { $_ -in 8,9,10,11,12,14,18,21,30,31,32 })
-$GpuNames  = @((Get-CimInstance Win32_VideoController -ErrorAction SilentlyContinue).Name)
+# Skip graphics adapters disabled in Device Manager (error code 22) or not connected (45)
+$GpuNames  = @(Get-CimInstance Win32_VideoController -ErrorAction SilentlyContinue |
+               Where-Object { $_.ConfigManagerErrorCode -notin 22, 45 } | ForEach-Object Name)
 $HasNvidia = [bool]($GpuNames -match 'NVIDIA')
 $HasAmdGpu = [bool]($GpuNames -match 'AMD|Radeon')
 $CpuName   = ((Get-CimInstance Win32_Processor -ErrorAction SilentlyContinue | Select-Object -First 1).Name).Trim()
@@ -359,7 +361,7 @@ function Invoke-Gpu {
     Write-Ok 'Optimizations for windowed games on'
 
     # MSI interrupt mode for the graphics card(s)
-    foreach ($d in (Get-PnpDevice -Class Display -PresentOnly -ErrorAction SilentlyContinue | Where-Object { $_.InstanceId -like 'PCI\*' })) {
+    foreach ($d in (Get-PnpDevice -Class Display -PresentOnly -Status OK -ErrorAction SilentlyContinue | Where-Object { $_.InstanceId -like 'PCI\*' })) {
         Set-Reg "HKLM\SYSTEM\CurrentControlSet\Enum\$($d.InstanceId)\Device Parameters\Interrupt Management\MessageSignaledInterruptProperties" 'MSISupported' 1
         Write-Ok "MSI mode: $($d.FriendlyName)"
     }
