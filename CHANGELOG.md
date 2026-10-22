@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.2.0
+- **New window (GUI)** — opens by default from `Run-GamingTweaks.cmd`
+  - Tabs: Tweaks, Your choices, Extras, Info + tools
+  - Recommended options pre-ticked; every question becomes a tick box, so it runs start to finish without stopping
+  - Live colour log, progress bar, Recommended / Untick all / Restore point / Revert everything buttons
+  - Shows your hardware in the header; PC info, timer test and backup folder on the Info tab
+- **Text menu kept**: `Run-GamingTweaks-Console.cmd` or `Run-GamingTweaks.cmd -Console`
+- Both share the same backup, so Revert works from either
+- If the window can't open, it falls back to the text menu automatically
+
 ## v1.1.0
 - **Aggressive services mode** in `S`: ~25 more services set to start on demand or turned off,
   while keeping the Store, Xbox, sign-in, notifications and typing working
