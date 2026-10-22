@@ -28,7 +28,7 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
     exit
 }
 
-$Version = '1.2.1'
+$Version = '1.3.0'
 $ErrorActionPreference = 'Continue'
 $ProgressPreference    = 'SilentlyContinue'
 $Host.UI.RawUI.WindowTitle = "GamingTweaks v$Version"
@@ -88,7 +88,7 @@ if (Get-Service -Name 'BEService*' -ErrorAction SilentlyContinue)       { $AntiC
 #endregion
 
 #region ---------- backup engine ----------
-$script:Backup = @{ Registry = @{}; Tasks = @{}; Flags = @{}; NetAdv = @{}; Dns = @{} }
+$script:Backup = @{ Registry = @{}; Tasks = @{}; Flags = @{}; NetAdv = @{}; Dns = @{}; Startup = @{} }
 
 function ConvertTo-HT($obj) {
     $h = @{}
@@ -100,7 +100,7 @@ function Import-Backup {
     if (Test-Path $BackupFile) {
         try {
             $j = Get-Content $BackupFile -Raw | ConvertFrom-Json
-            foreach ($k in 'Registry', 'Tasks', 'Flags', 'NetAdv', 'Dns') { $script:Backup[$k] = ConvertTo-HT $j.$k }
+            foreach ($k in 'Registry', 'Tasks', 'Flags', 'NetAdv', 'Dns', 'Startup') { $script:Backup[$k] = ConvertTo-HT $j.$k }
         } catch { Write-Warn2 "Could not read $BackupFile - starting a new backup" }
     }
 }
@@ -1104,6 +1104,20 @@ function Invoke-RevertAll {
     if ($f['QoS']) { Get-NetQosPolicy -ErrorAction SilentlyContinue | Where-Object Name -like 'GT-*' | Remove-NetQosPolicy -Confirm:$false -ErrorAction SilentlyContinue }
     Write-Ok 'Network adapters, DNS + QoS policies restored'
 
+    foreach ($e in @($script:Backup.Startup.Values)) {
+        try {
+            if ($e.Kind -eq 'Reg') {
+                $p = Get-RegPsPath $e.Key
+                if (-not (Test-Path -LiteralPath $p)) { New-Item -Path $p -Force | Out-Null }
+                $v = $e.Value; if ($e.Type -eq 'Binary') { $v = [byte[]]@($v) }
+                New-ItemProperty -LiteralPath $p -Name $e.Entry -Value $v -PropertyType $e.Type -Force | Out-Null
+            } elseif (Test-Path -LiteralPath $e.Saved) {
+                Copy-Item -LiteralPath $e.Saved -Destination $e.Key -Force
+            }
+        } catch { Write-Warn2 "Could not restore startup entry $($e.Entry)" }
+    }
+    if ($script:Backup.Startup.Count) { Write-Ok "Deleted startup entries restored ($($script:Backup.Startup.Count))" }
+
     try { Set-MpPreference -DisableRealtimeMonitoring $false -ErrorAction SilentlyContinue } catch {}
 
     if ($f['NvDrs'] -and (Test-Path $DrsBack)) {
@@ -1113,9 +1127,112 @@ function Invoke-RevertAll {
     }
 
     Move-Item $BackupFile (Join-Path $Root ("backup-reverted-{0:yyyyMMdd-HHmmss}.json" -f (Get-Date))) -Force
-    $script:Backup = @{ Registry = @{}; Tasks = @{}; Flags = @{}; NetAdv = @{}; Dns = @{} }
+    $script:Backup = @{ Registry = @{}; Tasks = @{}; Flags = @{}; NetAdv = @{}; Dns = @{}; Startup = @{} }
     Write-Ok 'Done. Removed apps are not reinstalled automatically (get them from the Store).'
     Write-Warn2 'Reboot to finish.'
+}
+#endregion
+
+#region ---------- startup apps ----------
+# Same places Task Manager's "Startup apps" reads. Turning an app off writes the same
+# StartupApproved value Task Manager uses, so it shows as Disabled there too.
+$StartupSources = @(
+    @{ Scope = 'Current user';        Kind = 'Reg';  Key = 'HKCU\Software\Microsoft\Windows\CurrentVersion\Run'
+       Approved = 'HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run' },
+    @{ Scope = 'All users';           Kind = 'Reg';  Key = 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run'
+       Approved = 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run' },
+    @{ Scope = 'All users (32-bit)';  Kind = 'Reg';  Key = 'HKLM\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Run'
+       Approved = 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run32' },
+    @{ Scope = 'Startup folder';      Kind = 'File'; Dir = [Environment]::GetFolderPath('Startup')
+       Approved = 'HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\StartupFolder' },
+    @{ Scope = 'All users startup folder'; Kind = 'File'; Dir = [Environment]::GetFolderPath('CommonStartup')
+       Approved = 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\StartupFolder' }
+)
+
+function Test-StartupEnabled([string]$Approved, [string]$Entry) {
+    $v = Get-RegValue $Approved $Entry
+    if ($v -is [byte[]] -and $v.Length -gt 0) { return -not ($v[0] -band 1) }   # 02/06 = on, 03/07 = off
+    return $true
+}
+
+function Get-StartupItems {
+    $items = @()
+    foreach ($src in $StartupSources) {
+        if ($src.Kind -eq 'Reg') {
+            $p = Get-RegPsPath $src.Key
+            if (-not (Test-Path -LiteralPath $p)) { continue }
+            $k = Get-Item -LiteralPath $p
+            foreach ($n in $k.GetValueNames()) {
+                if (-not $n) { continue }
+                $items += [pscustomobject]@{ Name = $n; Command = "$($k.GetValue($n, $null, 'DoNotExpandEnvironmentNames'))"
+                    Scope = $src.Scope; Kind = 'Reg'; Key = $src.Key; Approved = $src.Approved; Entry = $n
+                    Enabled = (Test-StartupEnabled $src.Approved $n) }
+            }
+        } elseif ($src.Dir -and (Test-Path -LiteralPath $src.Dir)) {
+            foreach ($f in (Get-ChildItem -LiteralPath $src.Dir -File -ErrorAction SilentlyContinue | Where-Object Name -ne 'desktop.ini')) {
+                $items += [pscustomobject]@{ Name = [IO.Path]::GetFileNameWithoutExtension($f.Name); Command = $f.FullName
+                    Scope = $src.Scope; Kind = 'File'; Key = $f.FullName; Approved = $src.Approved; Entry = $f.Name
+                    Enabled = (Test-StartupEnabled $src.Approved $f.Name) }
+            }
+        }
+    }
+    return @($items | Sort-Object Name)
+}
+
+function Set-StartupEnabled($Item, [bool]$On) {
+    $bytes = New-Object byte[] 12
+    $bytes[0] = if ($On) { 2 } else { 3 }
+    if (-not $On) { [BitConverter]::GetBytes((Get-Date).ToFileTime()).CopyTo($bytes, 4) }
+    Set-Reg $Item.Approved $Item.Entry $bytes 'Binary'
+    Save-Backup
+    if ($On) { Write-Ok "$($Item.Name) will start with Windows" } else { Write-Ok "$($Item.Name) will no longer start with Windows" }
+}
+
+function Remove-StartupItem($Item) {
+    $id = "$($Item.Kind)|$($Item.Key)|$($Item.Entry)"
+    try {
+        if ($Item.Kind -eq 'Reg') {
+            $p = Get-RegPsPath $Item.Key
+            $kind = (Get-Item -LiteralPath $p).GetValueKind($Item.Entry).ToString()
+            if (-not $script:Backup.Startup.ContainsKey($id)) {
+                $script:Backup.Startup[$id] = [ordered]@{ Kind = 'Reg'; Key = $Item.Key; Entry = $Item.Entry; Value = (Get-RegValue $Item.Key $Item.Entry); Type = $kind }
+            }
+            Remove-ItemProperty -LiteralPath $p -Name $Item.Entry -ErrorAction Stop
+        } else {
+            $dir = Join-Path $Root 'StartupBackup'
+            New-Item -ItemType Directory -Path $dir -Force | Out-Null
+            $saved = Join-Path $dir ("{0:yyyyMMdd-HHmmss}-{1}" -f (Get-Date), $Item.Entry)
+            Copy-Item -LiteralPath $Item.Key -Destination $saved -Force
+            if (-not $script:Backup.Startup.ContainsKey($id)) { $script:Backup.Startup[$id] = [ordered]@{ Kind = 'File'; Key = $Item.Key; Saved = $saved } }
+            Remove-Item -LiteralPath $Item.Key -Force -ErrorAction Stop
+        }
+        Save-Backup
+        Write-Ok "Deleted startup entry: $($Item.Name) (backed up - Revert puts it back)"
+    } catch { Write-Warn2 "Could not delete $($Item.Name): $($_.Exception.Message)" }
+}
+
+function Invoke-StartupMenu {
+    while ($true) {
+        Write-Title 'Startup apps'
+        $items = Get-StartupItems
+        if (-not $items) { Write-Skip 'No startup apps found'; return }
+        for ($i = 0; $i -lt $items.Count; $i++) {
+            $it = $items[$i]
+            $state = if ($it.Enabled) { 'ON ' } else { 'off' }
+            Write-Host ("  {0,3}. [{1}] {2,-30} {3}" -f ($i + 1), $state, $it.Name, $it.Scope) -ForegroundColor $(if ($it.Enabled) { 'White' } else { 'DarkGray' })
+        }
+        Write-Host ''
+        Write-Host '  Type a number to turn it on/off, D + number to delete it (e.g. D3), or just Enter to go back.'
+        $c = "$(Read-Host '  Choice')".Trim()
+        if (-not $c) { return }
+        if ($c -match '^[Dd]\s*(\d+)$') {
+            $n = [int]$Matches[1] - 1
+            if ($n -ge 0 -and $n -lt $items.Count -and (Confirm-Yes "Delete $($items[$n].Name) from startup? (backed up, Revert restores it)")) { Remove-StartupItem $items[$n] }
+        } elseif ($c -match '^\d+$') {
+            $n = [int]$c - 1
+            if ($n -ge 0 -and $n -lt $items.Count) { Set-StartupEnabled $items[$n] (-not $items[$n].Enabled) }
+        }
+    }
 }
 #endregion
 
@@ -1162,8 +1279,10 @@ function Show-Info {
         Write-Host "  Running services: $($n.Services) | Processes: $($n.Procs) | RAM in use: $($n.RamGB) GB"
         Write-Host '  (A "before" snapshot is saved automatically the first time you apply anything.)'
     }
-    Write-Title 'Startup apps (disable what you do not need: Task Manager > Startup apps)'
-    Get-CimInstance Win32_StartupCommand -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "  - $($_.Name)" }
+    Write-Title 'Startup apps (manage them on the Startup apps tab / option U)'
+    foreach ($it in (Get-StartupItems)) {
+        Write-Host ("  - {0,-30} {1}" -f $it.Name, $(if ($it.Enabled) { 'on' } else { 'off' })) -ForegroundColor $(if ($it.Enabled) { 'Gray' } else { 'DarkGray' })
+    }
 }
 
 function Invoke-All {
@@ -1302,6 +1421,20 @@ $GuiXaml = @'
         <TabItem Header="Extras">
           <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,0,10,0"><StackPanel x:Name="PanelExtras"/></ScrollViewer>
         </TabItem>
+        <TabItem Header="Startup apps">
+          <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,0,10,0">
+            <StackPanel>
+              <Border Style="{StaticResource Card}">
+                <StackPanel>
+                  <TextBlock Text="STARTUP APPS" Style="{StaticResource CardTitle}"/>
+                  <TextBlock Style="{StaticResource Desc}" Margin="0,2,0,6" Text="Untick to stop an app starting with Windows (same as Task Manager - fully reversible). Delete removes the entry completely; it is backed up and Revert everything puts it back. Changes apply straight away."/>
+                  <Button x:Name="BtnStartupRefresh" Content="Refresh list" HorizontalAlignment="Left" Margin="0,4,0,0"/>
+                </StackPanel>
+              </Border>
+              <StackPanel x:Name="StartupList"/>
+            </StackPanel>
+          </ScrollViewer>
+        </TabItem>
         <TabItem Header="Info + tools">
           <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,0,10,0"><StackPanel x:Name="PanelInfo"/></ScrollViewer>
         </TabItem>
@@ -1416,6 +1549,45 @@ function Invoke-GuiTask([string]$Label, [scriptblock]$Work) {
     try { & $Work } catch { Write-Warn2 "$Label failed: $($_.Exception.Message)" }
     $script:Window.FindName('Status').Text = 'Ready.'
     Set-GuiBusy $false
+}
+
+function Update-StartupPanel {
+    $list = $script:Window.FindName('StartupList')
+    $list.Children.Clear()
+    $items = Get-StartupItems
+    if (-not $items) {
+        $t = New-Object System.Windows.Controls.TextBlock; $t.Text = 'No startup apps found.'; $t.Style = $script:Window.FindResource('Desc')
+        [void]$list.Children.Add($t); return
+    }
+    foreach ($it in $items) {
+        $card = New-Object System.Windows.Controls.Border
+        $card.Style = $script:Window.FindResource('Card'); $card.Padding = New-Object System.Windows.Thickness(14, 8, 14, 10); $card.Margin = New-Object System.Windows.Thickness(0, 0, 0, 6)
+        $grid = New-Object System.Windows.Controls.Grid
+        $c0 = New-Object System.Windows.Controls.ColumnDefinition; $c0.Width = New-Object System.Windows.GridLength(1, 'Star')
+        $c1 = New-Object System.Windows.Controls.ColumnDefinition; $c1.Width = [System.Windows.GridLength]::Auto
+        [void]$grid.ColumnDefinitions.Add($c0); [void]$grid.ColumnDefinitions.Add($c1)
+        $left = New-Object System.Windows.Controls.StackPanel
+        $cb = New-Object System.Windows.Controls.CheckBox
+        $cb.Content = $it.Name; $cb.IsChecked = $it.Enabled; $cb.Tag = $it; $cb.Margin = New-Object System.Windows.Thickness(0, 2, 0, 0)
+        $cb.Add_Click({ param($ctl, $evt) Set-StartupEnabled $ctl.Tag ([bool]$ctl.IsChecked); $ctl.Tag.Enabled = [bool]$ctl.IsChecked })
+        [void]$left.Children.Add($cb)
+        $d = New-Object System.Windows.Controls.TextBlock
+        $d.Text = "$($it.Scope)  -  $($it.Command)"; $d.Style = $script:Window.FindResource('Desc'); $d.TextTrimming = 'CharacterEllipsis'; $d.TextWrapping = 'NoWrap'; $d.ToolTip = $it.Command
+        [void]$left.Children.Add($d)
+        [System.Windows.Controls.Grid]::SetColumn($left, 0); [void]$grid.Children.Add($left)
+        $del = New-Object System.Windows.Controls.Button
+        $del.Content = 'Delete'; $del.Tag = $it; $del.VerticalAlignment = 'Center'
+        $del.Background = (New-Object System.Windows.Media.BrushConverter).ConvertFromString('#3F1D1D')
+        $del.Add_Click({
+            param($ctl, $evt)
+            $item = $ctl.Tag
+            $r = [System.Windows.MessageBox]::Show("Delete '$($item.Name)' from startup?`n`nIt is backed up first - Revert everything puts it back.", 'Startup apps', 'YesNo', 'Question')
+            if ($r -eq 'Yes') { Remove-StartupItem $item; Update-StartupPanel }
+        })
+        [System.Windows.Controls.Grid]::SetColumn($del, 1); [void]$grid.Children.Add($del)
+        $card.Child = $grid
+        [void]$list.Children.Add($card)
+    }
 }
 
 function Start-Gui {
@@ -1534,12 +1706,15 @@ function Start-Gui {
     $script:BtnInfo.Add_Click({ Invoke-GuiTask 'Reading PC info...' { Show-Info } })
     $script:BtnTimer.Add_Click({ Invoke-GuiTask 'Measuring timer...' { Test-Timer } })
     $script:BtnFolder.Add_Click({ Start-Process explorer.exe $Root })
+    $script:Window.FindName('BtnStartupRefresh').Add_Click({ Update-StartupPanel })
+    Update-StartupPanel
 
     $script:Window.FindName('BtnRevert').Add_Click({
         $r = [System.Windows.MessageBox]::Show('Put every setting GamingTweaks changed back the way it was?', 'Revert everything', 'YesNo', 'Warning')
         if ($r -ne 'Yes') { return }
         $script:Answers = @{ Revert = $true }
         Invoke-GuiTask 'Reverting...' { Invoke-RevertAll }
+        Update-StartupPanel
         [void][System.Windows.MessageBox]::Show('Reverted. Reboot to finish.', 'GamingTweaks', 'OK', 'Information')
     })
 
@@ -1638,10 +1813,12 @@ while ($true) {
     Write-Host '  [G] Game priority (Apex etc)  [N] NVIDIA profile import  [M] MPO off  [T] Timer test'
     Write-Host '  [S] Services'
     Write-Host ''
-    Write-Host '  [P] Restore point   [I] PC info + startup apps   [R] REVERT EVERYTHING   [Q] Quit' -ForegroundColor Yellow
+    Write-Host '  [U] Startup apps - turn on/off or delete'
+    Write-Host ''
+    Write-Host '  [P] Restore point   [I] PC info   [R] REVERT EVERYTHING   [Q] Quit' -ForegroundColor Yellow
     Write-Host ''
     $c = "$(Read-Host '  Choose')".Trim().ToUpper()
-    if ($c -notin '1','2','3','4','5','6','7','8','9','A','B','C','D','E','F','G','N','M','T','S','P','I','R','Q') { continue }
+    if ($c -notin '1','2','3','4','5','6','7','8','9','A','B','C','D','E','F','G','N','M','T','S','U','P','I','R','Q') { continue }
     if ($c -notin 'I', 'T', 'Q', 'R', 'P') { Save-Baseline }
     switch ($c) {
         '1' { Invoke-All }
@@ -1661,6 +1838,7 @@ while ($true) {
         'F' { Invoke-Spectre }
         'G' { Invoke-Games }
         'S' { Invoke-Services }
+        'U' { Invoke-StartupMenu }
         'N' { Invoke-NvidiaProfile }
         'M' { Invoke-Mpo }
         'T' { Test-Timer }
