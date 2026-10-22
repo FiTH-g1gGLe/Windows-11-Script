@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.3.0
+- **Startup apps manager** — new *Startup apps* tab in the window and option `U` in the text menu
+  - Lists everything from the Run keys (user, all users, 32-bit) and both Startup folders
+  - Untick / toggle to stop an app starting with Windows — written the same way Task Manager does it, so it shows as Disabled there too
+  - **Delete** removes the entry completely; it is backed up first and **Revert everything** puts it back
+- PC info now lists startup apps with their on / off state
+
 ## v1.2.1
 - Graphics cards disabled in Device Manager (e.g. an unused integrated GPU) are no longer shown or tweaked
 
