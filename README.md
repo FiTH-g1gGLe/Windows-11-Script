@@ -7,7 +7,7 @@
 A Windows 10/11 gaming optimisation script that adapts to your PC, keeps the Microsoft Store,
 Xbox and anti-cheat working, and can put everything back exactly as it was.
 
-`v1.3.0` · PowerShell · Windows 10 / 11 · Window or text menu
+`v1.4.0` · PowerShell · Windows 10 / 11 · Window or text menu
 
 </div>
 
@@ -70,7 +70,7 @@ The window and the text menu run exactly the same sections (keys shown for the t
 
 | Key | Section | What it does |
 |:-:|---|---|
-| **1** | **Apply everything recommended** | Restore point → 2-9, S, G, N → asks about bloat apps and the optional trade-offs |
+| **1** | **Apply everything recommended** | Restore point → 2-9, S, G, N, X → asks about bloat apps and the optional trade-offs |
 | **2** | Power plan | Own Ultimate-based plan, aggressive turbo boost, max-performance EPP, all cores unparked, no PCIe/USB/disk power saving |
 | **3** | Gaming & input | Game Mode, no Game DVR, foreground CPU boost, MMCSS games profile, raw mouse input, no Sticky Keys pop-ups, no startup delay, Realtek audio fix |
 | **4** | GPU | Hardware-accelerated GPU scheduling, windowed-game optimisations, MSI mode, NVIDIA telemetry off |
@@ -82,6 +82,7 @@ The window and the text menu run exactly the same sections (keys shown for the t
 | **S** | Services | ~40 unused services off; asks about printing, Bluetooth, file sharing and search indexing; optional **aggressive mode** (~25 more set to on-demand or off) |
 | **G** | Game priority | Above Normal CPU priority for Apex and 9 other games, MMCSS IO latency cap off |
 | **N** | NVIDIA profile | Downloads NVIDIA Profile Inspector, backs up your profile, imports 12 tuned settings |
+| **X** | Defender: skip game folders | Defender stops scanning your Steam libraries, Epic / Riot / Xbox game folders and GPU shader caches — faster installs, updates and loading, Defender stays on for everything else. Skipped if Defender is off |
 
 ### Extras — never applied without asking
 

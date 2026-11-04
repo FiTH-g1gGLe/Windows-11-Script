@@ -28,7 +28,7 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
     exit
 }
 
-$Version = '1.3.0'
+$Version = '1.4.0'
 $ErrorActionPreference = 'Continue'
 $ProgressPreference    = 'SilentlyContinue'
 $Host.UI.RawUI.WindowTitle = "GamingTweaks v$Version"
@@ -804,6 +804,51 @@ function Invoke-Defender {
     Save-Backup
 }
 
+function Invoke-DefenderExclusions {
+    Write-Title 'Defender: skip scanning game folders'
+    $policyOff = (Get-RegValue 'HKLM\SOFTWARE\Policies\Microsoft\Windows Defender' 'DisableAntiSpyware') -eq 1
+    $s = Get-MpComputerStatus -ErrorAction SilentlyContinue
+    if ($policyOff -or -not $s -or -not $s.AntivirusEnabled) {
+        Write-Skip 'Defender is off or another antivirus is in charge - exclusions not needed'
+        return
+    }
+    Write-Host '  Faster installs, updates, shader compiling and load screens. Defender keeps protecting everything else.'
+    $paths = New-Object System.Collections.Generic.List[string]
+    # Steam: every library listed in libraryfolders.vdf (games, downloads and Steam's shader cache)
+    $steam = Get-RegValue 'HKCU\Software\Valve\Steam' 'SteamPath'
+    if (-not $steam) { $steam = Get-RegValue 'HKLM\SOFTWARE\WOW6432Node\Valve\Steam' 'InstallPath' }
+    if ($steam) {
+        $steam = $steam -replace '/', '\'
+        $libs = @($steam)
+        $vdf = Join-Path $steam 'steamapps\libraryfolders.vdf'
+        if (Test-Path -LiteralPath $vdf) {
+            foreach ($m in [regex]::Matches((Get-Content -LiteralPath $vdf -Raw), '"path"\s+"([^"]+)"')) { $libs += ($m.Groups[1].Value -replace '\\\\', '\') }
+        }
+        foreach ($l in $libs) { $paths.Add((Join-Path $l 'steamapps')) }
+    }
+    # Other launchers' default game folders
+    $paths.Add((Join-Path $env:ProgramFiles 'Epic Games'))
+    $paths.Add("$env:SystemDrive\Riot Games")
+    $paths.Add((Join-Path ${env:ProgramFiles(x86)} 'Steam\steamapps'))
+    foreach ($d in (Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3' -ErrorAction SilentlyContinue)) { $paths.Add("$($d.DeviceID)\XboxGames") }
+    # GPU shader caches
+    foreach ($c in 'NVIDIA\DXCache', 'NVIDIA\GLCache', 'D3DSCache', 'AMD\DxCache', 'AMD\DxcCache', 'AMD\VkCache') { $paths.Add((Join-Path $env:LOCALAPPDATA $c)) }
+
+    $have  = @((Get-MpPreference -ErrorAction SilentlyContinue).ExclusionPath | Where-Object { $_ })
+    $added = @()
+    foreach ($x in ($paths | ForEach-Object { $_.TrimEnd('\') } | Sort-Object -Unique)) {
+        if (-not (Test-Path -LiteralPath $x)) { continue }
+        if ($have -contains $x) { Write-Skip "already excluded: $x"; continue }
+        try { Add-MpPreference -ExclusionPath $x -ErrorAction Stop; $added += $x; Write-Ok "Excluded: $x" }
+        catch { Write-Warn2 "Could not exclude $x ($($_.Exception.Message))" }
+    }
+    if ($added) {
+        $script:Backup.Flags['DefenderExcl'] = @((@($script:Backup.Flags['DefenderExcl']) + $added) | Where-Object { $_ } | Select-Object -Unique)
+        Save-Backup
+    } elseif (-not $have) { Write-Skip 'No game folders found' }
+    Write-Warn2 'Mods or tools you put inside these folders are not scanned either - only add ones you trust.'
+}
+
 function Invoke-Spectre {
     Write-Title 'Spectre / Meltdown mitigations off'
     Write-Host "  CPU: $CpuName"
@@ -851,6 +896,7 @@ function Invoke-Services {
         Telemetry = 'Intel Telemetry'; Wecsvc = 'Windows Event Collector'; WebClient = 'WebDAV client'
         CertPropSvc = 'Certificate Propagation (smart card)'; AssignedAccessManagerSvc = 'Kiosk mode'
         AppMgmt = 'Group Policy app install'; workfolderssvc = 'Work Folders'
+        uhssvc = 'Microsoft Update Health'
     })
     if (-not $IsLaptop) {
         Off ([ordered]@{
@@ -1089,6 +1135,11 @@ function Invoke-RevertAll {
         Write-Ok 'Timer resolution task removed'
     }
 
+    if ($f['DefenderExcl']) {
+        foreach ($x in @($f['DefenderExcl'])) { Remove-MpPreference -ExclusionPath $x -ErrorAction SilentlyContinue }
+        Write-Ok 'Defender game-folder exclusions removed'
+    }
+
     foreach ($id in @($script:Backup.NetAdv.Keys)) {
         $n, $k = $id -split '\|', 2
         Set-NetAdapterAdvancedProperty -Name $n -RegistryKeyword $k -RegistryValue $script:Backup.NetAdv[$id] -NoRestart -ErrorAction SilentlyContinue
@@ -1301,6 +1352,7 @@ function Invoke-All {
     Write-Title 'Optional FPS-for-security trade-offs'
     Write-Host '  Core Isolation/VBS off (biggest FPS gain of the three), UAC prompts off, Defender off.'
     if (Confirm-Yes 'Apply all three?') { Invoke-Vbs; Invoke-Uac; Invoke-Defender }
+    Invoke-DefenderExclusions
     Invoke-Cleanup
     Save-Backup
     Write-Title 'Finished'
@@ -1628,6 +1680,7 @@ function Start-Gui {
     Add-Opt $c 'Services'   'Services' 'Unused services off (maps, fax, smart card, insider, Hyper-V guest, vendor telemetry...). Printing, Bluetooth, sharing, search and aggressive mode are on the "Your choices" tab.' $true
     Add-Opt $c 'Updates'    'Windows Update off' 'Automatic updates paused 10 years, driver updates blocked, version locked. The Microsoft Store keeps working.' $true
     Add-Opt $c 'Network'    'Network' 'Network throttling and Nagle off, adapter power saving / EEE / coalescing off, network card MSI mode, game traffic marked high priority.' $true
+    Add-Opt $c 'DefExcl'    'Defender: skip game folders' 'Defender stops scanning Steam, Epic, Riot and Xbox game folders and GPU shader caches: faster installs, updates and loading. Skipped if you turn Defender off.' $true
     Add-Opt $c 'Cleanup'    'Cleanup' 'Temp files, old update downloads, Delivery Optimization cache, crash dumps, error reports, Discord cache. More options on "Your choices".' $true
 
     # ---------------- Your choices tab ----------------
@@ -1743,6 +1796,7 @@ function Start-Gui {
             @('Vbs',        'Core Isolation off',     { Invoke-Vbs }),
             @('Uac',        'UAC prompts off',        { Invoke-Uac }),
             @('Defender',   'Defender off',           { Invoke-Defender }),
+            @('DefExcl',    'Defender game folders',  { Invoke-DefenderExclusions }),
             @('Spectre',    'Spectre / Meltdown off', { Invoke-Spectre }),
             @('Mpo',        'MPO off',                { Invoke-Mpo })
         )
@@ -1799,7 +1853,7 @@ while ($true) {
     Write-Host "  GamingTweaks v$Version" -ForegroundColor Cyan
     Write-Host "  $WinName $WinVer | $(if ($IsLaptop) { 'Laptop' } else { 'Desktop' }) | $($GpuNames -join ', ') | $RamGB GB" -ForegroundColor DarkGray
     Write-Host ''
-    Write-Host '  [1] APPLY EVERYTHING RECOMMENDED  (2-9, S, G, N + asks about the extras)' -ForegroundColor Green
+    Write-Host '  [1] APPLY EVERYTHING RECOMMENDED  (2-9, S, G, N, X + asks about the extras)' -ForegroundColor Green
     Write-Host ''
     Write-Host '  [2] Power plan            [6] Windows Update off (Store still works)'
     Write-Host '  [3] Gaming & input        [7] Network'
@@ -1811,14 +1865,14 @@ while ($true) {
     Write-Host '  [B] DNS servers           [E] Defender off'
     Write-Host '  [C] Core Isolation off    [F] Spectre/Meltdown off (older CPUs)'
     Write-Host '  [G] Game priority (Apex etc)  [N] NVIDIA profile import  [M] MPO off  [T] Timer test'
-    Write-Host '  [S] Services'
+    Write-Host '  [S] Services              [X] Defender: skip scanning game folders'
     Write-Host ''
     Write-Host '  [U] Startup apps - turn on/off or delete'
     Write-Host ''
     Write-Host '  [P] Restore point   [I] PC info   [R] REVERT EVERYTHING   [Q] Quit' -ForegroundColor Yellow
     Write-Host ''
     $c = "$(Read-Host '  Choose')".Trim().ToUpper()
-    if ($c -notin '1','2','3','4','5','6','7','8','9','A','B','C','D','E','F','G','N','M','T','S','U','P','I','R','Q') { continue }
+    if ($c -notin '1','2','3','4','5','6','7','8','9','A','B','C','D','E','F','G','N','M','T','S','U','X','P','I','R','Q') { continue }
     if ($c -notin 'I', 'T', 'Q', 'R', 'P') { Save-Baseline }
     switch ($c) {
         '1' { Invoke-All }
@@ -1838,6 +1892,7 @@ while ($true) {
         'F' { Invoke-Spectre }
         'G' { Invoke-Games }
         'S' { Invoke-Services }
+        'X' { Invoke-DefenderExclusions }
         'U' { Invoke-StartupMenu }
         'N' { Invoke-NvidiaProfile }
         'M' { Invoke-Mpo }

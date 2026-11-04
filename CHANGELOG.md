@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.4.0
+- **Defender: skip scanning game folders** — new option `X` in the text menu, ticked by default in the window
+  - Adds Defender exclusions for every Steam library, Epic / Riot / Xbox game folders and GPU shader caches
+  - Faster installs, updates, shader compiling and loading; Defender stays on for everything else
+  - Skipped automatically if Defender is turned off; **Revert everything** removes the exclusions
+- Services: Microsoft Update Health Service (`uhssvc`) turned off along with the other unused services
+
 ## v1.3.0
 - **Startup apps manager** — new *Startup apps* tab in the window and option `U` in the text menu
   - Lists everything from the Run keys (user, all users, 32-bit) and both Startup folders
