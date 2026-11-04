@@ -1,6 +1,6 @@
 
    ==================================================================
-                         G A M I N G T W E A K S   v1.3.0
+                         G A M I N G T W E A K S   v1.4.0
          One menu. Every change backed up. One key to undo it all.
    ==================================================================
 
@@ -68,7 +68,7 @@
    ==================================================================
 
    [1]  APPLY EVERYTHING RECOMMENDED
-        Makes a restore point, runs 2-9, S, G and N in order, asks
+        Makes a restore point, runs 2-9, S, G, N and X in order, asks
         about removing bloat apps [A], then offers the optional
         FPS-for-security trade-offs [C] [D] [E] together.
 
@@ -176,6 +176,17 @@
         networking, sign-in, notifications and typing still work.
         Typical clean Win11 desktop: ~110-130 running before,
         ~85-95 after, ~75-85 with no Bluetooth/printer/sharing/search.
+
+   ------------------------------------------------------------------
+   [X]  DEFENDER: SKIP SCANNING GAME FOLDERS
+   ------------------------------------------------------------------
+        Keeps Defender on, but stops it scanning game files:
+          * every Steam library (from libraryfolders.vdf)
+          * Epic Games, Riot Games and XboxGames folders
+          * NVIDIA / AMD / DirectX shader caches
+        Faster installs, updates, shader compiling and load screens.
+        No FPS change in game. Skipped if Defender is turned off.
+        Revert removes the exclusions again.
 
    ------------------------------------------------------------------
    [G]  GAME PRIORITY
