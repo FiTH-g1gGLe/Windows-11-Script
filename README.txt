@@ -1,6 +1,6 @@
 
    ==================================================================
-                         G A M I N G T W E A K S   v1.5.0
+                         G A M I N G T W E A K S   v1.6.0
          One menu. Every change backed up. One key to undo it all.
    ==================================================================
 
@@ -243,6 +243,9 @@
    [U]  Startup apps ..... turn apps on/off at startup (like Task
                            Manager) or delete them - backed up,
                            Revert puts deleted ones back
+   [W]  Install apps ..... Chrome, Firefox (UK English), Opera GX -
+                           silent installs from the publisher via
+                           winget; skipped if already up to date
    [P]  Restore point .... make one any time
    [I]  PC info .......... hardware, anti-cheat, VBS, power plan,
                            HAGS, before/after services + RAM,
