@@ -28,7 +28,7 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
     exit
 }
 
-$Version = '1.4.0'
+$Version = '1.5.0'
 $ErrorActionPreference = 'Continue'
 $ProgressPreference    = 'SilentlyContinue'
 $Host.UI.RawUI.WindowTitle = "GamingTweaks v$Version"
@@ -730,15 +730,21 @@ $BloatApps = @(
     'Microsoft.Todos', 'Microsoft.WindowsFeedbackHub', 'Microsoft.WindowsMaps', 'Microsoft.ZuneVideo', 'Microsoft.549981C3F5F10',
     'Microsoft.Windows.DevHome', 'Microsoft.OutlookForWindows', 'Microsoft.Copilot', 'Microsoft.Windows.Ai.Copilot.Provider',
     'Microsoft.MicrosoftJournal', 'Microsoft.StartExperiencesApp', 'Clipchamp.Clipchamp', 'MicrosoftTeams', 'MSTeams',
-    'Microsoft.YourPhone', 'MicrosoftCorporationII.MicrosoftFamily'
+    'Microsoft.YourPhone', 'MicrosoftCorporationII.MicrosoftFamily',
+    'MicrosoftWindows.Client.WebExperience', 'Microsoft.WidgetsPlatformRuntime', 'microsoft.windowscommunicationsapps',
+    'Microsoft.XboxSpeechToTextOverlay'
 )
+# Windows components (Features on Demand) and optional features - Revert puts these back
+$BloatCaps     = [ordered]@{ MathRecognizer = 'Math Input Panel'; 'App.StepsRecorder' = 'Steps Recorder'; 'Browser.InternetExplorer' = 'Internet Explorer mode' }
+$BloatFeatures = [ordered]@{ MicrosoftWindowsPowerShellV2Root = 'PowerShell 2.0 (old, security risk)'; 'Printing-XPSServices-Features' = 'XPS Document Writer' }
 function Invoke-Bloat {
     Write-Title 'Remove bloat apps'
     Write-Host '  Removes: News, Weather, Bing, Get Help, Tips, Office hub, Solitaire, People, Power Automate, To Do,'
     Write-Host '           Feedback Hub, Maps, Films & TV, Cortana, Dev Home, new Outlook, Copilot, Journal, Clipchamp,'
-    Write-Host '           Teams, Phone Link, Family.'
+    Write-Host '           Teams, Phone Link, Family, Widgets, old Mail and Calendar, Xbox speech-to-text overlay.'
+    Write-Host '  Also:    Math Input Panel, Steps Recorder, Internet Explorer mode, PowerShell 2.0, XPS printer.'
     Write-Host '  Keeps:   Store, Xbox, Gaming Services, Photos, Calculator, Notepad, Paint, Terminal, Snipping Tool, Camera.'
-    Write-Warn2 'Not covered by Revert - reinstall any of these from the Microsoft Store if you miss them.'
+    Write-Warn2 'Apps are not covered by Revert - reinstall them from the Microsoft Store. The components and features are.'
     if (-not (Confirm-Yes 'Remove them?' 'Bloat')) { return }
     $prov = Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue
     foreach ($n in $BloatApps) {
@@ -746,6 +752,29 @@ function Invoke-Bloat {
         if ($pk) { $pk | Remove-AppxPackage -AllUsers -ErrorAction SilentlyContinue; Write-Ok $n }
         $prov | Where-Object DisplayName -eq $n | Remove-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue | Out-Null
     }
+
+    Write-Host '  Windows components (can take a minute)...'
+    $caps = Get-WindowsCapability -Online -ErrorAction SilentlyContinue
+    foreach ($e in $BloatCaps.GetEnumerator()) {
+        $found = @($caps | Where-Object { $_.Name -like "$($e.Key)~*" -and $_.State -eq 'Installed' })
+        foreach ($c in $found) {
+            try {
+                Remove-WindowsCapability -Online -Name $c.Name -ErrorAction Stop | Out-Null
+                $script:Backup.Flags['RemovedCaps'] = @((@($script:Backup.Flags['RemovedCaps']) + $c.Name) | Where-Object { $_ } | Select-Object -Unique)
+                Write-Ok $e.Value
+            } catch { Write-Warn2 "Could not remove $($e.Value) ($($_.Exception.Message))" }
+        }
+    }
+    foreach ($e in $BloatFeatures.GetEnumerator()) {
+        $f = Get-WindowsOptionalFeature -Online -FeatureName $e.Key -ErrorAction SilentlyContinue
+        if (-not $f -or $f.State -ne 'Enabled') { continue }
+        try {
+            Disable-WindowsOptionalFeature -Online -FeatureName $e.Key -NoRestart -ErrorAction Stop | Out-Null
+            $script:Backup.Flags['DisabledFeatures'] = @((@($script:Backup.Flags['DisabledFeatures']) + $e.Key) | Where-Object { $_ } | Select-Object -Unique)
+            Write-Ok $e.Value
+        } catch { Write-Warn2 "Could not turn off $($e.Value) ($($_.Exception.Message))" }
+    }
+    Save-Backup
 }
 
 function Invoke-Vbs {
@@ -1138,6 +1167,16 @@ function Invoke-RevertAll {
     if ($f['DefenderExcl']) {
         foreach ($x in @($f['DefenderExcl'])) { Remove-MpPreference -ExclusionPath $x -ErrorAction SilentlyContinue }
         Write-Ok 'Defender game-folder exclusions removed'
+    }
+
+    if ($f['DisabledFeatures']) {
+        foreach ($x in @($f['DisabledFeatures'])) { Enable-WindowsOptionalFeature -Online -FeatureName $x -All -NoRestart -ErrorAction SilentlyContinue | Out-Null }
+        Write-Ok 'Optional features turned back on'
+    }
+    if ($f['RemovedCaps']) {
+        Write-Host '  Reinstalling removed Windows components from Windows Update (can take a few minutes)...'
+        foreach ($x in @($f['RemovedCaps'])) { Add-WindowsCapability -Online -Name $x -ErrorAction SilentlyContinue | Out-Null }
+        Write-Ok 'Windows components reinstalled'
     }
 
     foreach ($id in @($script:Backup.NetAdv.Keys)) {
@@ -1712,7 +1751,7 @@ function Start-Gui {
     # ---------------- Extras tab ----------------
     $p = $script:Window.FindName('PanelExtras')
     $c = Add-Card $p 'Apps'
-    Add-Opt $c 'Bloat' 'Remove bloat apps' 'News, Weather, Bing, Get Help, Tips, Office hub, Solitaire, People, Power Automate, To Do, Feedback Hub, Maps, Films & TV, Cortana, Dev Home, new Outlook, Copilot, Journal, Clipchamp, Teams, Phone Link, Family. Kept: Store, Xbox, Photos, Calculator, Notepad, Paint, Terminal, Snipping Tool, Camera. Not undone by Revert (reinstall from the Store).' $false
+    Add-Opt $c 'Bloat' 'Remove bloat apps' 'News, Weather, Bing, Get Help, Tips, Office hub, Solitaire, People, Power Automate, To Do, Feedback Hub, Maps, Films & TV, Cortana, Dev Home, new Outlook, Copilot, Journal, Clipchamp, Teams, Phone Link, Family, Widgets, old Mail and Calendar, Xbox speech-to-text overlay. Also Math Input Panel, Steps Recorder, IE mode, PowerShell 2.0 and the XPS printer. Kept: Store, Xbox, Photos, Calculator, Notepad, Paint, Terminal, Snipping Tool, Camera. Apps are not undone by Revert (reinstall from the Store); the components are.' $false
     $c = Add-Card $p 'FPS for security - your call'
     Add-Opt $c 'Vbs'      'Core Isolation / VBS off' 'Often +5-10% FPS in CPU-heavy games. If a FACEIT / Vanguard game complains, Revert or turn Memory Integrity back on.' $false $true
     Add-Opt $c 'Uac'      'UAC prompts off ("Never notify")' 'Store apps keep working.' $false $true
