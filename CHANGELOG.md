@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.7.0
+- **Install apps** gains four new sections:
+  - Game launchers: Steam, Epic Games, EA app, Ubisoft Connect, Battle.net, GOG GALAXY
+  - Chat: Discord
+  - Utilities: WinRAR, Notepad++, Fan Control, EarTrumpet (per-app volume mixer in the tray)
+  - Classic Windows: brings back **Windows Photo Viewer** for JPG / PNG / BMP / TIFF and adds the **classic Volume Mixer** to the Start menu — both undone by Revert
+
 ## v1.6.0
 - **Install apps** — new *Install apps* tab in the window and option `W` in the text menu
   - Browsers: Google Chrome, Mozilla Firefox (UK English), Opera GX

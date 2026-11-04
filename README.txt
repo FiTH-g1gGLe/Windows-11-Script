@@ -1,6 +1,6 @@
 
    ==================================================================
-                         G A M I N G T W E A K S   v1.6.0
+                         G A M I N G T W E A K S   v1.7.0
          One menu. Every change backed up. One key to undo it all.
    ==================================================================
 
@@ -243,9 +243,15 @@
    [U]  Startup apps ..... turn apps on/off at startup (like Task
                            Manager) or delete them - backed up,
                            Revert puts deleted ones back
-   [W]  Install apps ..... Chrome, Firefox (UK English), Opera GX -
-                           silent installs from the publisher via
+   [W]  Install apps ..... silent installs from the publisher via
                            winget; skipped if already up to date
+        Browsers ....... Chrome, Firefox (UK English), Opera GX
+        Game launchers . Steam, Epic, EA app, Ubisoft Connect,
+                         Battle.net, GOG GALAXY
+        Chat ........... Discord
+        Utilities ...... WinRAR, Notepad++, Fan Control, EarTrumpet
+        Classic Windows  Windows Photo Viewer, classic Volume Mixer
+                         (Revert removes these two)
    [P]  Restore point .... make one any time
    [I]  PC info .......... hardware, anti-cheat, VBS, power plan,
                            HAGS, before/after services + RAM,

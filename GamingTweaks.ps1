@@ -28,7 +28,7 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
     exit
 }
 
-$Version = '1.6.0'
+$Version = '1.7.0'
 $ErrorActionPreference = 'Continue'
 $ProgressPreference    = 'SilentlyContinue'
 $Host.UI.RawUI.WindowTitle = "GamingTweaks v$Version"
@@ -1169,6 +1169,8 @@ function Invoke-RevertAll {
         Write-Ok 'Defender game-folder exclusions removed'
     }
 
+    if ($f['MixerLnk']) { Remove-Item -LiteralPath $f['MixerLnk'] -Force -ErrorAction SilentlyContinue; Write-Ok 'Classic Volume Mixer shortcut removed' }
+
     if ($f['DisabledFeatures']) {
         foreach ($x in @($f['DisabledFeatures'])) { Enable-WindowsOptionalFeature -Online -FeatureName $x -All -NoRestart -ErrorAction SilentlyContinue | Out-Null }
         Write-Ok 'Optional features turned back on'
@@ -1328,11 +1330,33 @@ function Invoke-StartupMenu {
 
 #region ---------- install apps ----------
 # Installed with winget (App Installer), straight from each publisher. Add more categories / apps here.
+# Entries with an Action instead of an Id switch on something already inside Windows.
 $AppCatalog = [ordered]@{
     'Browsers' = @(
         [pscustomobject]@{ Name = 'Google Chrome';   Id = 'Google.Chrome';   Locale = '';      Desc = 'Fast, works with everything, syncs with your Google account.' }
         [pscustomobject]@{ Name = 'Mozilla Firefox'; Id = 'Mozilla.Firefox'; Locale = 'en-GB'; Desc = 'Privacy-focused, lighter on RAM than Chrome with many tabs. Installed in UK English.' }
         [pscustomobject]@{ Name = 'Opera GX';        Id = 'Opera.OperaGX';   Locale = '';      Desc = 'Gaming browser with RAM / CPU / network limiters (GX Control) - set them so it stays out of the way while you play.' }
+    )
+    'Game launchers' = @(
+        [pscustomobject]@{ Name = 'Steam';           Id = 'Valve.Steam';                 Locale = ''; Desc = 'Valve''s store and launcher.' }
+        [pscustomobject]@{ Name = 'Epic Games';      Id = 'EpicGames.EpicGamesLauncher'; Locale = ''; Desc = 'Fortnite, Rocket League and the weekly free games.' }
+        [pscustomobject]@{ Name = 'EA app';          Id = 'ElectronicArts.EADesktop';    Locale = ''; Desc = 'Apex Legends, Battlefield, EA FC (replaces Origin).' }
+        [pscustomobject]@{ Name = 'Ubisoft Connect'; Id = 'Ubisoft.Connect';             Locale = ''; Desc = 'Rainbow Six Siege, The Division, Assassin''s Creed.' }
+        [pscustomobject]@{ Name = 'Battle.net';      Id = 'Blizzard.BattleNet';          Locale = ''; Desc = 'Call of Duty, Overwatch, Diablo, WoW. Its setup window may still appear.' }
+        [pscustomobject]@{ Name = 'GOG GALAXY';      Id = 'GOG.Galaxy';                  Locale = ''; Desc = 'GOG store; can also show your other launchers'' games in one library.' }
+    )
+    'Chat' = @(
+        [pscustomobject]@{ Name = 'Discord';         Id = 'Discord.Discord';             Locale = ''; Desc = 'Voice and text chat. Opens once after installing so you can sign in.' }
+    )
+    'Utilities' = @(
+        [pscustomobject]@{ Name = 'WinRAR';          Id = 'RARLab.WinRAR';               Locale = ''; Desc = 'Opens .rar, .zip, .7z and more. Free to use, with a "please buy" reminder.' }
+        [pscustomobject]@{ Name = 'Notepad++';       Id = 'Notepad++.Notepad++';         Locale = ''; Desc = 'Text and config file editor with tabs and highlighting - handy for game configs.' }
+        [pscustomobject]@{ Name = 'Fan Control';     Id = 'Rem0o.FanControl';            Locale = ''; Desc = 'Custom fan curves for CPU, GPU and case fans. Turn on "Start with Windows" in its settings.' }
+        [pscustomobject]@{ Name = 'EarTrumpet';      Id = 'File-New-Project.EarTrumpet'; Locale = ''; Desc = 'Tray volume mixer with a slider per app, like the old Windows one. Drag its icon next to the clock.' }
+    )
+    'Classic Windows' = @(
+        [pscustomobject]@{ Name = 'Windows Photo Viewer (classic)'; Id = ''; Locale = ''; Action = { Enable-PhotoViewer }; Desc = 'Brings back the fast old photo viewer for JPG, PNG, BMP and TIFF. Then pick it under Open with > Choose another app > Always. Revert removes it.' }
+        [pscustomobject]@{ Name = 'Volume Mixer (classic)';         Id = ''; Locale = ''; Action = { Add-ClassicMixer };   Desc = 'Adds the old per-app volume mixer to the Start menu (it is still in Windows, just hidden). Revert removes the shortcut.' }
     )
 }
 # winget exit codes
@@ -1348,6 +1372,29 @@ function Test-Winget {
     Write-Warn2 'winget (App Installer) is missing. The Store is opening on App Installer - install or update it, then try again.'
     Start-Process 'ms-windows-store://pdp/?PFN=Microsoft.DesktopAppInstaller_8wekyb3d8bbwe'
     return $false
+}
+
+function Enable-PhotoViewer {
+    $fa = 'HKLM\SOFTWARE\Microsoft\Windows Photo Viewer\Capabilities\FileAssociations'
+    if (-not (Test-Path -LiteralPath (Get-RegPsPath 'HKLM\SOFTWARE\Classes\PhotoViewer.FileAssoc.Tiff'))) {
+        Write-Warn2 'Windows Photo Viewer is not on this PC (it needs the full Windows image)'; return
+    }
+    foreach ($e in '.jpg', '.jpeg', '.jpe', '.jfif', '.png', '.bmp', '.dib', '.tif', '.tiff', '.ico', '.wdp') { Set-Reg $fa $e 'PhotoViewer.FileAssoc.Tiff' 'String' }
+    Save-Backup
+    Write-Ok 'Windows Photo Viewer is back - right-click a photo > Open with > Choose another app > Windows Photo Viewer > Always'
+}
+
+function Add-ClassicMixer {
+    $lnk = Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs\Volume Mixer (classic).lnk'
+    try {
+        $s = (New-Object -ComObject WScript.Shell).CreateShortcut($lnk)
+        $s.TargetPath = Join-Path $env:SystemRoot 'System32\SndVol.exe'
+        $s.IconLocation = "$(Join-Path $env:SystemRoot 'System32\SndVol.exe'),0"
+        $s.Description = 'Classic per-app volume mixer'
+        $s.Save()
+        $script:Backup.Flags['MixerLnk'] = $lnk; Save-Backup
+        Write-Ok 'Volume Mixer (classic) added to the Start menu - right-click it > Pin to taskbar for one-click access'
+    } catch { Write-Warn2 "Could not create the shortcut ($($_.Exception.Message))" }
 }
 
 function Install-CatalogApp($App) {
@@ -1369,8 +1416,10 @@ function Install-CatalogApp($App) {
 function Install-Apps([object[]]$Apps) {
     if (-not $Apps) { Write-Skip 'Nothing ticked'; return }
     Write-Title 'Install apps'
-    if (-not (Test-Winget)) { return }
-    foreach ($a in $Apps) { Install-CatalogApp $a }
+    $wg = @($Apps | Where-Object { $_.Id })
+    foreach ($a in @($Apps | Where-Object { $_.Action })) { Write-Host "  $($a.Name)..."; & $a.Action }
+    if ($wg -and -not (Test-Winget)) { return }
+    foreach ($a in $wg) { Install-CatalogApp $a }
     Write-Skip 'Revert does not uninstall these - use Settings > Apps if you want one gone.'
 }
 
@@ -1380,7 +1429,7 @@ function Invoke-InstallMenu {
     $i = 0
     foreach ($c in $AppCatalog.Keys) {
         Write-Host "  $c" -ForegroundColor Cyan
-        foreach ($a in $AppCatalog[$c]) { $i++; Write-Host ("  {0,3}. {1,-18} {2}" -f $i, $a.Name, $a.Desc) }
+        foreach ($a in $AppCatalog[$c]) { $i++; Write-Host ("  {0,3}. {1}" -f $i, $a.Name) }
     }
     Write-Host ''
     Write-Host '  Type the numbers to install (e.g. 1,3), A for all, or just Enter to go back.'
@@ -2008,7 +2057,7 @@ while ($true) {
     Write-Host '  [S] Services              [X] Defender: skip scanning game folders'
     Write-Host ''
     Write-Host '  [U] Startup apps - turn on/off or delete'
-    Write-Host '  [W] Install apps - browsers (Chrome, Firefox, Opera GX)'
+    Write-Host '  [W] Install apps - browsers, game launchers, Discord, utilities, classic Photo Viewer / Volume Mixer'
     Write-Host ''
     Write-Host '  [P] Restore point   [I] PC info   [R] REVERT EVERYTHING   [Q] Quit' -ForegroundColor Yellow
     Write-Host ''
