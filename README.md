@@ -7,7 +7,7 @@
 A Windows 10/11 gaming optimisation script that adapts to your PC, keeps the Microsoft Store,
 Xbox and anti-cheat working, and can put everything back exactly as it was.
 
-`v1.5.0` · PowerShell · Windows 10 / 11 · Window or text menu
+`v1.6.0` · PowerShell · Windows 10 / 11 · Window or text menu
 
 </div>
 
@@ -98,6 +98,7 @@ The window and the text menu run exactly the same sections (keys shown for the t
 | **T** | Timer test | Measures how accurately Windows wakes up |
 | **P** | Restore point | Make one any time |
 | **U** | Startup apps | Turn apps on/off at startup (same as Task Manager) or delete the entry — backed up, Revert restores it |
+| **W** | Install apps | Browsers: Google Chrome, Mozilla Firefox (UK English), Opera GX — silent installs straight from the publisher via winget; also an *Install apps* tab in the window |
 | **I** | PC info | Hardware, anti-cheat, VBS, power plan, HAGS, **before/after** services, processes and RAM, startup apps |
 | **R** | **Revert everything** | Puts every recorded setting back |
 

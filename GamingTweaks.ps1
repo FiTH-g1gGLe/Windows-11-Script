@@ -28,7 +28,7 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
     exit
 }
 
-$Version = '1.5.0'
+$Version = '1.6.0'
 $ErrorActionPreference = 'Continue'
 $ProgressPreference    = 'SilentlyContinue'
 $Host.UI.RawUI.WindowTitle = "GamingTweaks v$Version"
@@ -1326,6 +1326,74 @@ function Invoke-StartupMenu {
 }
 #endregion
 
+#region ---------- install apps ----------
+# Installed with winget (App Installer), straight from each publisher. Add more categories / apps here.
+$AppCatalog = [ordered]@{
+    'Browsers' = @(
+        [pscustomobject]@{ Name = 'Google Chrome';   Id = 'Google.Chrome';   Locale = '';      Desc = 'Fast, works with everything, syncs with your Google account.' }
+        [pscustomobject]@{ Name = 'Mozilla Firefox'; Id = 'Mozilla.Firefox'; Locale = 'en-GB'; Desc = 'Privacy-focused, lighter on RAM than Chrome with many tabs. Installed in UK English.' }
+        [pscustomobject]@{ Name = 'Opera GX';        Id = 'Opera.OperaGX';   Locale = '';      Desc = 'Gaming browser with RAM / CPU / network limiters (GX Control) - set them so it stays out of the way while you play.' }
+    )
+}
+# winget exit codes
+$WgAlready  = @(-1978335189, -1978335135)   # no newer version / already installed
+$WgNoLocale = -1978335216                   # no installer for that language
+$WgNotFound = -1978335212                   # no package with that ID
+
+function Test-Winget {
+    if (Get-Command winget -ErrorAction SilentlyContinue) { return $true }
+    # App Installer is often there but not registered yet on a fresh install
+    try { Add-AppxPackage -RegisterByFamilyName -MainPackage 'Microsoft.DesktopAppInstaller_8wekyb3d8bbwe' -ErrorAction Stop } catch {}
+    if (Get-Command winget -ErrorAction SilentlyContinue) { return $true }
+    Write-Warn2 'winget (App Installer) is missing. The Store is opening on App Installer - install or update it, then try again.'
+    Start-Process 'ms-windows-store://pdp/?PFN=Microsoft.DesktopAppInstaller_8wekyb3d8bbwe'
+    return $false
+}
+
+function Install-CatalogApp($App) {
+    Write-Host "  Installing $($App.Name)..."
+    $base = @('install', '--id', $App.Id, '-e', '--source', 'winget', '--silent',
+              '--accept-package-agreements', '--accept-source-agreements', '--disable-interactivity')
+    $wgArgs = if ($App.Locale) { $base + @('--locale', $App.Locale) } else { $base }
+    $out = & winget @wgArgs 2>&1; $code = $LASTEXITCODE
+    if ($code -eq $WgNoLocale -and $App.Locale) { $out = & winget @base 2>&1; $code = $LASTEXITCODE }
+    if ($code -eq 0)                 { Write-Ok "$($App.Name) installed" }
+    elseif ($WgAlready -contains $code) { Write-Skip "$($App.Name) is already installed and up to date" }
+    elseif ($code -eq $WgNotFound)   { Write-Warn2 "$($App.Name): winget could not find $($App.Id)" }
+    else {
+        $last = @($out | ForEach-Object { "$_".Trim() } | Where-Object { $_ -and $_ -notmatch '^[\s\-\\|/]+$|[▀-▟]' }) | Select-Object -Last 1
+        Write-Warn2 "$($App.Name) failed (code $code) $last"
+    }
+}
+
+function Install-Apps([object[]]$Apps) {
+    if (-not $Apps) { Write-Skip 'Nothing ticked'; return }
+    Write-Title 'Install apps'
+    if (-not (Test-Winget)) { return }
+    foreach ($a in $Apps) { Install-CatalogApp $a }
+    Write-Skip 'Revert does not uninstall these - use Settings > Apps if you want one gone.'
+}
+
+function Invoke-InstallMenu {
+    $all = @(foreach ($c in $AppCatalog.Keys) { $AppCatalog[$c] })
+    Write-Title 'Install apps'
+    $i = 0
+    foreach ($c in $AppCatalog.Keys) {
+        Write-Host "  $c" -ForegroundColor Cyan
+        foreach ($a in $AppCatalog[$c]) { $i++; Write-Host ("  {0,3}. {1,-18} {2}" -f $i, $a.Name, $a.Desc) }
+    }
+    Write-Host ''
+    Write-Host '  Type the numbers to install (e.g. 1,3), A for all, or just Enter to go back.'
+    $c = "$(Read-Host '  Choice')".Trim()
+    if (-not $c) { return }
+    $pick = if ($c -match '^[Aa]$') { $all } else {
+        @($c -split '[,\s]+' | Where-Object { $_ -match '^\d+$' } | ForEach-Object { [int]$_ - 1 } |
+          Where-Object { $_ -ge 0 -and $_ -lt $all.Count } | Select-Object -Unique | ForEach-Object { $all[$_] })
+    }
+    Install-Apps $pick
+}
+#endregion
+
 #region ---------- info + all ----------
 function Get-Snapshot {
     $os = Get-CimInstance Win32_OperatingSystem
@@ -1523,6 +1591,20 @@ $GuiXaml = @'
                 </StackPanel>
               </Border>
               <StackPanel x:Name="StartupList"/>
+            </StackPanel>
+          </ScrollViewer>
+        </TabItem>
+        <TabItem Header="Install apps">
+          <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,0,10,0">
+            <StackPanel>
+              <Border Style="{StaticResource Card}">
+                <StackPanel>
+                  <TextBlock Text="INSTALL APPS" Style="{StaticResource CardTitle}"/>
+                  <TextBlock Style="{StaticResource Desc}" Margin="0,2,0,6" Text="Tick what you want, then press Install. Everything comes straight from the publisher through winget, installs silently, and is skipped if it is already up to date."/>
+                  <Button x:Name="BtnInstallApps" Content="Install ticked apps" HorizontalAlignment="Left" Margin="0,4,0,0"/>
+                </StackPanel>
+              </Border>
+              <StackPanel x:Name="PanelInstall"/>
             </StackPanel>
           </ScrollViewer>
         </TabItem>
@@ -1801,6 +1883,25 @@ function Start-Gui {
     $script:Window.FindName('BtnStartupRefresh').Add_Click({ Update-StartupPanel })
     Update-StartupPanel
 
+    # ---------------- Install apps tab ----------------
+    $script:InstallBoxes = @()
+    $p = $script:Window.FindName('PanelInstall')
+    foreach ($cat in $AppCatalog.Keys) {
+        $c = Add-Card $p $cat
+        foreach ($a in $AppCatalog[$cat]) {
+            $cb = New-Object System.Windows.Controls.CheckBox
+            $cb.Content = $a.Name; $cb.Tag = $a
+            [void]$c.Children.Add($cb)
+            Add-Text $c $a.Desc
+            $script:InstallBoxes += $cb
+        }
+    }
+    $script:Window.FindName('BtnInstallApps').Add_Click({
+        $pick = @($script:InstallBoxes | Where-Object { $_.IsChecked } | ForEach-Object { $_.Tag })
+        if (-not $pick) { $script:Window.FindName('Status').Text = 'Tick at least one app to install.'; return }
+        Invoke-GuiTask "Installing $($pick.Count) app(s)..." { Install-Apps $pick }
+    })
+
     $script:Window.FindName('BtnRevert').Add_Click({
         $r = [System.Windows.MessageBox]::Show('Put every setting GamingTweaks changed back the way it was?', 'Revert everything', 'YesNo', 'Warning')
         if ($r -ne 'Yes') { return }
@@ -1907,12 +2008,13 @@ while ($true) {
     Write-Host '  [S] Services              [X] Defender: skip scanning game folders'
     Write-Host ''
     Write-Host '  [U] Startup apps - turn on/off or delete'
+    Write-Host '  [W] Install apps - browsers (Chrome, Firefox, Opera GX)'
     Write-Host ''
     Write-Host '  [P] Restore point   [I] PC info   [R] REVERT EVERYTHING   [Q] Quit' -ForegroundColor Yellow
     Write-Host ''
     $c = "$(Read-Host '  Choose')".Trim().ToUpper()
-    if ($c -notin '1','2','3','4','5','6','7','8','9','A','B','C','D','E','F','G','N','M','T','S','U','X','P','I','R','Q') { continue }
-    if ($c -notin 'I', 'T', 'Q', 'R', 'P') { Save-Baseline }
+    if ($c -notin '1','2','3','4','5','6','7','8','9','A','B','C','D','E','F','G','N','M','T','S','U','W','X','P','I','R','Q') { continue }
+    if ($c -notin 'I', 'T', 'Q', 'R', 'P', 'W') { Save-Baseline }
     switch ($c) {
         '1' { Invoke-All }
         '2' { Invoke-Power }
@@ -1933,6 +2035,7 @@ while ($true) {
         'S' { Invoke-Services }
         'X' { Invoke-DefenderExclusions }
         'U' { Invoke-StartupMenu }
+        'W' { Invoke-InstallMenu }
         'N' { Invoke-NvidiaProfile }
         'M' { Invoke-Mpo }
         'T' { Test-Timer }

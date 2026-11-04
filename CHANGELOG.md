@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.6.0
+- **Install apps** — new *Install apps* tab in the window and option `W` in the text menu
+  - Browsers: Google Chrome, Mozilla Firefox (UK English), Opera GX
+  - Silent installs straight from each publisher via winget; apps already up to date are skipped
+  - If winget is missing on a fresh install it is registered automatically, or the Store opens on App Installer
+  - Not undone by Revert (uninstall from Settings > Apps)
+
 ## v1.5.0
 - **Remove bloat apps** now also removes:
   - Apps: Widgets, Widgets Platform Runtime, old Mail and Calendar, Xbox speech-to-text overlay
