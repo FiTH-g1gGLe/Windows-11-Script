@@ -1,6 +1,6 @@
 
    ==================================================================
-                         G A M I N G T W E A K S   v1.4.0
+                         G A M I N G T W E A K S   v1.5.0
          One menu. Every change backed up. One key to undo it all.
    ==================================================================
 
@@ -222,7 +222,11 @@
         News, Weather, Bing, Get Help, Tips, Office hub, Solitaire,
         People, Power Automate, To Do, Feedback Hub, Maps, Films & TV,
         Cortana, Dev Home, new Outlook, Copilot, Journal, Clipchamp,
-        Teams, Phone Link, Family.
+        Teams, Phone Link, Family, Widgets, old Mail and Calendar,
+        Xbox speech-to-text overlay.
+        Also: Math Input Panel, Steps Recorder, Internet Explorer
+        mode, PowerShell 2.0, XPS Document Writer (these come back
+        with Revert; the apps come back from the Store).
         Kept: Store, Xbox, Gaming Services, Photos, Calculator,
         Notepad, Paint, Terminal, Snipping Tool, Camera.
 

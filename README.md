@@ -7,7 +7,7 @@
 A Windows 10/11 gaming optimisation script that adapts to your PC, keeps the Microsoft Store,
 Xbox and anti-cheat working, and can put everything back exactly as it was.
 
-`v1.4.0` · PowerShell · Windows 10 / 11 · Window or text menu
+`v1.5.0` · PowerShell · Windows 10 / 11 · Window or text menu
 
 </div>
 
@@ -46,7 +46,7 @@ and revert in the other.
 - **`R`** restores all of it
 - Every run is logged to `C:\GamingTweaks\log-<date>.txt`
 
-*Not covered by `R`: removed bloat apps (reinstall them from the Store) and deleted junk files.*
+*Not covered by `R`: removed bloat apps (reinstall them from the Store) and deleted junk files. Removed Windows components and optional features are put back.*
 
 ---
 
@@ -88,7 +88,7 @@ The window and the text menu run exactly the same sections (keys shown for the t
 
 | Key | Option | Notes |
 |:-:|---|---|
-| **A** | Remove bloat apps | Keeps Store, Xbox, Gaming Services, Photos, Calculator, Notepad, Paint, Terminal, Snipping Tool, Camera |
+| **A** | Remove bloat apps | Also removes Widgets, old Mail/Calendar, Math Input Panel, Steps Recorder, IE mode, PowerShell 2.0 and the XPS printer. Keeps Store, Xbox, Gaming Services, Photos, Calculator, Notepad, Paint, Terminal, Snipping Tool, Camera |
 | **B** | DNS servers | Cloudflare, Google, Quad9 or automatic |
 | **C** | Core Isolation off | VBS / Memory Integrity off — often +5-10% FPS in CPU-heavy games |
 | **D** | UAC prompts off | "Never notify" — Store apps keep working |

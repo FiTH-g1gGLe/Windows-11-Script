@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.5.0
+- **Remove bloat apps** now also removes:
+  - Apps: Widgets, Widgets Platform Runtime, old Mail and Calendar, Xbox speech-to-text overlay
+  - Windows components: Math Input Panel, Steps Recorder, Internet Explorer mode
+  - Optional features: PowerShell 2.0 (old, a known security risk), XPS Document Writer
+- **Revert everything** turns those components and features back on (the apps still come back from the Store)
+
 ## v1.4.0
 - **Defender: skip scanning game folders** — new option `X` in the text menu, ticked by default in the window
   - Adds Defender exclusions for every Steam library, Epic / Riot / Xbox game folders and GPU shader caches
